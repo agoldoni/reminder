@@ -9,8 +9,8 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface EventDao {
-    @Query("SELECT * FROM events WHERE completed = 0 ORDER BY dateTimeMillis DESC")
-    fun getActiveSortedDesc(): Flow<List<EventEntity>>
+    @Query("SELECT * FROM events WHERE completed = 0 ORDER BY dateTimeMillis ASC")
+    fun getActiveSortedAsc(): Flow<List<EventEntity>>
 
     @Query("SELECT * FROM events WHERE completed = 1 ORDER BY dateTimeMillis DESC")
     fun getCompletedSortedDesc(): Flow<List<EventEntity>>
@@ -35,4 +35,10 @@ interface EventDao {
 
     @Query("SELECT * FROM events WHERE completed = 0 AND dateTimeMillis - advanceMinutes * 60000 > :nowMillis")
     suspend fun getFutureEvents(nowMillis: Long): List<EventEntity>
+
+    @Query("SELECT * FROM events ORDER BY dateTimeMillis ASC")
+    suspend fun getAll(): List<EventEntity>
+
+    @Query("SELECT * FROM events WHERE completed = 0 ORDER BY dateTimeMillis ASC")
+    suspend fun getAllOpen(): List<EventEntity>
 }

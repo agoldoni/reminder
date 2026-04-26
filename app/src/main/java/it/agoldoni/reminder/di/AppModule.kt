@@ -9,6 +9,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import it.agoldoni.reminder.data.AppDatabase
 import it.agoldoni.reminder.data.EventDao
+import it.agoldoni.reminder.export.Exporter
+import it.agoldoni.reminder.export.OdsExporter
 import javax.inject.Singleton
 
 @Module
@@ -24,4 +26,8 @@ object AppModule {
 
     @Provides
     fun provideEventDao(db: AppDatabase): EventDao = db.eventDao()
+
+    @Provides
+    @Singleton
+    fun provideExporter(odsExporter: OdsExporter): Exporter = odsExporter
 }
