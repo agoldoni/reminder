@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -48,6 +49,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import it.agoldoni.reminder.BuildConfig
 import it.agoldoni.reminder.data.EventEntity
 import it.agoldoni.reminder.export.ExportFilter
 import java.text.SimpleDateFormat
@@ -67,6 +69,7 @@ fun EventListScreen(
     val exportState by viewModel.exportState.collectAsState()
     var eventToRemove by remember { mutableStateOf<EventEntity?>(null) }
     var showExportDialog by remember { mutableStateOf(false) }
+    var showInfoDialog by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(exportState) {
@@ -107,6 +110,27 @@ fun EventListScreen(
                     }) {
                         Text("Fatto")
                     }
+                }
+            }
+        )
+    }
+
+    if (showInfoDialog) {
+        AlertDialog(
+            onDismissRequest = { showInfoDialog = false },
+            title = { Text("Info") },
+            text = {
+                Column {
+                    Text("Autore: ${BuildConfig.APP_AUTHOR}")
+                    Spacer(Modifier.height(4.dp))
+                    Text("Versione: ${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})")
+                    Spacer(Modifier.height(4.dp))
+                    Text("Build: ${BuildConfig.BUILD_DATE}")
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showInfoDialog = false }) {
+                    Text("Chiudi")
                 }
             }
         )
@@ -162,6 +186,9 @@ fun EventListScreen(
                     IconButton(onClick = onNavigateToCompleted) {
                         Icon(Icons.Default.CheckCircle, contentDescription = "Fatti")
                     }
+                    IconButton(onClick = { showInfoDialog = true }) {
+                        Icon(Icons.Default.Info, contentDescription = "Info")
+                    }
                 }
             )
         },
@@ -204,15 +231,17 @@ internal fun EventCard(event: EventEntity, onClick: () -> Unit, onDeleteClick: (
     val notificationMillis = event.dateTimeMillis - event.advanceMinutes * 60_000L
     val now = System.currentTimeMillis()
     val isPast = event.dateTimeMillis < now
-    val startOfDayAfterTomorrow = Calendar.getInstance().apply {
+    val startOfToday = Calendar.getInstance().apply {
         timeInMillis = now
         set(Calendar.HOUR_OF_DAY, 0)
         set(Calendar.MINUTE, 0)
         set(Calendar.SECOND, 0)
         set(Calendar.MILLISECOND, 0)
-        add(Calendar.DAY_OF_YEAR, 2)
     }.timeInMillis
-    val isTodayOrTomorrow = !isPast && event.dateTimeMillis < startOfDayAfterTomorrow
+    val startOfTomorrow = startOfToday + 24L * 60L * 60L * 1000L
+    val startOfDayAfterTomorrow = startOfTomorrow + 24L * 60L * 60L * 1000L
+    val isToday = event.dateTimeMillis in startOfToday until startOfTomorrow
+    val isTomorrow = event.dateTimeMillis in startOfTomorrow until startOfDayAfterTomorrow
     val isDark = isSystemInDarkTheme()
 
     val containerColor: Color
@@ -222,9 +251,13 @@ internal fun EventCard(event: EventEntity, onClick: () -> Unit, onDeleteClick: (
             containerColor = MaterialTheme.colorScheme.surfaceVariant
             contentColor = MaterialTheme.colorScheme.onSurfaceVariant
         }
-        isTodayOrTomorrow -> {
+        isToday -> {
             containerColor = if (isDark) Color(0xFF5D4A1F) else Color(0xFFFFD54F)
             contentColor = if (isDark) Color(0xFFFFF8E1) else Color(0xFF2E1A00)
+        }
+        isTomorrow -> {
+            containerColor = if (isDark) Color(0xFF3F4A22) else Color(0xFFCDDC7A)
+            contentColor = if (isDark) Color(0xFFF0F4DC) else Color(0xFF1F2A05)
         }
         else -> {
             containerColor = if (isDark) Color(0xFF1F3D25) else Color(0xFF81C784)

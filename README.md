@@ -51,6 +51,28 @@ Oppure direttamente con Gradle:
 ./install-all.sh --build
 ```
 
+## Emulatore e dispositivi
+
+```bash
+# Elenca i dispositivi/emulatori connessi
+adb devices -l
+
+# Elenca gli AVD (Android Virtual Device) configurati
+emulator -list-avds
+
+# Avvia un emulatore per nome
+emulator -avd <nome_avd>
+
+# Avvia un emulatore in background, senza audio e con wipe dei dati
+emulator -avd <nome_avd> -no-audio -wipe-data &
+
+# Termina tutti gli emulatori in esecuzione
+adb emu kill
+
+# Disinstalla l'app debug da un dispositivo specifico
+adb -s <device_id> uninstall it.agoldoni.reminder.debug
+```
+
 ## Configurazione Release
 
 Per il build di release è necessario un keystore di firma. Variabili d'ambiente:
