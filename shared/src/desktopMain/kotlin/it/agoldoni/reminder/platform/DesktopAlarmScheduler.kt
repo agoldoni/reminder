@@ -17,12 +17,14 @@ import java.util.concurrent.ConcurrentHashMap
  */
 class DesktopAlarmScheduler(
     private val dao: EventDao,
-    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+    notifierFactory: (suspend (NotificationAction, EventEntity) -> Unit) -> EventNotifier =
+        { onAction -> DesktopNotifier(scope, onAction) }
 ) : AlarmScheduler {
 
     private val pending = ConcurrentHashMap<Long, Job>()
 
-    private val notifier = DesktopNotifier(scope) { action, event -> handle(action, event) }
+    private val notifier: EventNotifier = notifierFactory { action, event -> handle(action, event) }
 
     override fun schedule(event: EventEntity) {
         cancel(event.id)

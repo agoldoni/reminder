@@ -40,7 +40,18 @@ kotlin {
             }
         }
         val commonTest by getting {
-            dependencies { implementation(kotlin("test")) }
+            dependencies {
+                implementation(kotlin("test"))
+                implementation(libs.kotlinx.coroutines.test)
+            }
+        }
+        val androidInstrumentedTest by getting {
+            dependencies {
+                implementation(kotlin("test"))
+                implementation(libs.androidx.test.runner)
+                implementation(libs.androidx.test.core)
+                implementation(libs.androidx.test.junit)
+            }
         }
         val desktopMain by getting {
             dependencies {
@@ -54,7 +65,10 @@ kotlin {
 android {
     namespace = "it.agoldoni.reminder.shared"
     compileSdk = 36
-    defaultConfig { minSdk = 26 }
+    defaultConfig {
+        minSdk = 26
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

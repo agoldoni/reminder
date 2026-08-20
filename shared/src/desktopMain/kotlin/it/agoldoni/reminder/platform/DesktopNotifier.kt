@@ -9,6 +9,11 @@ import kotlinx.coroutines.withContext
 /** Azioni offerte dalla notifica desktop, allineate a quelle Android. */
 enum class NotificationAction { SNOOZE_SHORT, SNOOZE_LONG, COMPLETE }
 
+/** Mostra la notifica di scadenza; sostituibile nei test per non invocare `notify-send`. */
+interface EventNotifier {
+    fun show(event: EventEntity, overdue: Boolean = false)
+}
+
 /**
  * Notifiche di sistema via `notify-send` (libnotify ≥ 0.8, che supporta le azioni con `-A`
  * e stampa su stdout il nome dell'azione scelta). Non c'è un equivalente comune ad Android:
@@ -17,9 +22,9 @@ enum class NotificationAction { SNOOZE_SHORT, SNOOZE_LONG, COMPLETE }
 class DesktopNotifier(
     private val scope: CoroutineScope,
     private val onAction: suspend (NotificationAction, EventEntity) -> Unit
-) {
+) : EventNotifier {
 
-    fun show(event: EventEntity, overdue: Boolean = false) {
+    override fun show(event: EventEntity, overdue: Boolean) {
         scope.launch {
             val action = withContext(Dispatchers.IO) { runNotifySend(event, overdue) } ?: return@launch
             onAction(action, event)
