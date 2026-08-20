@@ -1,0 +1,495 @@
+# Desktop Linux — Implementation Plan
+
+**Stato:** Bozza — in attesa di approvazione
+**Autore:** Alberto Goldoni
+**Data:** 2026-08-20
+**Versione:** 1.0
+**Codebase di riferimento:** commit `e18dffa` (branch `main`)
+
+---
+
+## 1. Executive Summary
+
+*Promemoria* oggi esiste solo su Android. Questa feature porta la stessa applicazione su
+**desktop Linux**, convertendo il progetto a **Compose Multiplatform**: una sola codebase
+alimenta entrambe le versioni, invece di due progetti da mantenere in parallelo. Sul PC l'app
+resta attiva nella system tray, parte al login e mostra le notifiche di scadenza anche a
+finestra chiusa. Telefono e computer si **sincronizzano da soli quando sono sulla stessa rete**,
+trovandosi via discovery automatico e senza alcun server: nessun account, nessun cloud, nessun
+dato che esce dalla rete locale.
+
+Stima complessiva **46,5 giorni/uomo**, divisa in due tranche: **28,0 gg** per l'app desktop
+completa e installabile (senza sincronizzazione) e **18,5 gg** per la sincronizzazione.
+
+---
+
+## 2. Obiettivo e motivazione
+
+- **Problema che risolve:**
+  I promemoria vivono nel solo database Room del telefono. Chi lavora davanti a un PC Linux non
+  può consultarli né crearli senza prendere in mano il dispositivo, e le notifiche arrivano
+  sullo schermo sbagliato — non quello che sta guardando. L'unico ponte esistente verso il
+  desktop è l'export ODS (feature `condivisione`): a senso unico e in sola lettura.
+
+- **Metriche di successo** (verifica manuale, nessuna analytics nel progetto):
+  - [ ] Un promemoria creato sul telefono compare sul desktop entro 30 s, con entrambe le app
+        attive sulla stessa rete.
+  - [ ] La notifica desktop arriva all'orario previsto con la finestra chiusa.
+  - [ ] Zero regressioni funzionali sull'app Android dopo la ristrutturazione a moduli.
+  - [ ] Installazione su Linux con un solo file, senza dipendenze da installare a mano.
+  - [ ] Ogni nuova feature di prodotto si scrive una volta sola e appare su entrambe le
+        piattaforme.
+
+- **Legame con gli obiettivi del progetto:**
+  *Promemoria* è un'app personale il cui valore sta nell'affidabilità del promemoria al momento
+  giusto. Il desktop è il luogo dove l'utente passa la giornata lavorativa: senza di esso una
+  quota rilevante delle scadenze arriva su un dispositivo non guardato.
+
+---
+
+## 3. Scope
+
+### Incluso
+
+**Ristrutturazione multipiattaforma**
+- Moduli `:shared` (con source set `commonMain`, `jvmSharedMain`, `androidMain`, `desktopMain`),
+  `:androidApp`, `:desktopApp`.
+- Sostituzione di Hilt con una DI compatibile KMP; migrazione a Room KMP con driver SQLite
+  bundled; astrazioni `expect/actual` per allarmi, notifiche, filesystem, informazioni di build,
+  formattazione date e colori dinamici.
+
+**App desktop Linux**
+- Parità funzionale sulle schermate esistenti (lista attivi, editor, completati) ed export ODS
+  con dialog di salvataggio nativo.
+- Notifiche di sistema con azioni +5 min / +1 ora / completa; recupero all'avvio delle scadenze
+  maturate ad app spenta.
+- System tray con menù, chiusura-a-tray, istanza singola, avvio automatico al login via
+  `~/.config/autostart`.
+- Distribuzione come **AppImage** singolo file.
+
+**Sincronizzazione punto-punto in LAN**
+- Schema dati sincronizzabile (v3): identità globale, timestamp di modifica, tombstone
+  conservati per sempre.
+- Discovery automatico via mDNS, pairing con codice di conferma su entrambi i lati, canale
+  cifrato, credenziali persistite.
+- Replica bidirezionale con risoluzione conflitti "ultima scrittura vince" per evento, e
+  riprogrammazione degli allarmi dopo ogni sincronizzazione.
+- Schermata di stato: peer associato, ultimo sync, errori, sync manuale, dissociazione.
+
+### Escluso (out of scope)
+
+- **Windows e macOS** — il codice condiviso non li preclude, ma build, packaging e collaudo non
+  rientrano: nessun hardware di test disponibile e nessun bisogno dichiarato.
+- **Sync via Internet, server centrale, account utente** — la scelta esplicita è di non avere
+  infrastruttura da gestire né dati fuori dalla rete di casa.
+- **Sync di più di due dispositivi** — la topologia è punto-punto; il modello a mesh
+  moltiplicherebbe i casi di conflitto senza un beneficio reale per un utente singolo.
+- **Merge campo-per-campo e UI di risoluzione conflitti** — su un'app monoutente la modifica
+  simultanea dello stesso evento da due dispositivi è un caso di bordo: LWW è sufficiente.
+- **Epurazione automatica dello storico** — per decisione dell'utente completati e tombstone si
+  conservano indefinitamente.
+- **iOS, web, PWA; redesign della UI; integrazione con calendari esterni; cifratura del
+  database a riposo.**
+
+### Decisioni chiuse
+
+Tutte risolte dall'utente il **2026-08-20**: nessuna decisione bloccante residua.
+
+| # | Decisione | Esito |
+|---|---|---|
+| 1 | Ambiente desktop target | **Cinnamon / X11** — la stessa macchina di sviluppo. La system tray funziona nativamente: R14 decade e US-003 resta come progettata |
+| 2 | Approvazione della stima | **Piano completo approvato** (46,5 gg, entrambe le tranche). La consegna resta incrementale: tranche 1 utilizzabile da sola |
+| 3 | Dependency injection | **Container manuale** — niente Koin: 12 punti di iniezione non giustificano una dipendenza in più |
+| 4 | Terna Kotlin / AGP / Compose Multiplatform | Resta il deliverable di T-01: è una verifica tecnica, non una scelta di prodotto |
+
+---
+
+## 4. User Stories e criteri di accettazione
+
+### US-001 · Gestire i promemoria dal PC
+**Priorità:** Must Have
+
+Come utente al PC voglio consultare, creare, modificare e completare i promemoria da
+un'applicazione Linux per non dover prendere il telefono mentre lavoro.
+
+- [ ] L'app si avvia su Linux X11 e mostra la lista degli attivi ordinati per data.
+- [ ] Creazione, modifica, completamento, riattivazione ed eliminazione danno lo stesso
+      risultato dell'app Android sugli stessi dati.
+- [ ] Le tre schermate sono navigabili con mouse e tastiera.
+- [ ] Il database risiede in `~/.local/share/promemoria/reminder.db` (standard XDG).
+
+### US-002 · Ricevere le notifiche sul desktop
+**Priorità:** Must Have
+
+Come utente al PC voglio ricevere la notifica del promemoria sul desktop, anche a finestra
+chiusa, per non perdere le scadenze mentre sono concentrato su altro.
+
+- [ ] Alla scadenza (`dateTimeMillis - advanceMinutes * 60000`) compare una notifica di sistema
+      con titolo e descrizione.
+- [ ] Le azioni +5 min, +1 ora e completa hanno lo stesso effetto sui dati delle omologhe Android.
+- [ ] La notifica arriva con la finestra chiusa e app in tray.
+- [ ] Se l'app era spenta alla scadenza, al successivo avvio compare una notifica di recupero
+      per ogni evento scaduto e non completato.
+
+### US-003 · Avvio automatico e tray
+**Priorità:** Must Have
+
+Come utente voglio che l'app parta da sola al login e resti nella tray per non doverla
+riaprire a ogni riavvio.
+
+- [ ] La chiusura della finestra non termina il processo.
+- [ ] Il menù della tray offre: apri, nuovo promemoria, esci.
+- [ ] L'opzione "avvia al login" crea/rimuove `~/.config/autostart/promemoria.desktop` e lo
+      stato sopravvive al riavvio.
+- [ ] Un secondo avvio riporta in primo piano la finestra esistente invece di duplicare il processo.
+
+### US-004 · Trovare l'altro dispositivo senza configurazione
+**Priorità:** Must Have
+
+Come utente voglio che telefono e PC si trovino da soli sulla stessa rete per non dover
+configurare indirizzi IP o porte.
+
+- [ ] Con entrambe le app attive sulla stessa rete, ciascuna elenca l'altra entro 30 s.
+- [ ] Il nome mostrato identifica il dispositivo in modo leggibile.
+- [ ] Se il multicast è bloccato, l'app lo segnala e offre l'inserimento manuale di host e porta.
+
+### US-005 · Associare i dispositivi in modo sicuro
+**Priorità:** Must Have
+
+Come utente voglio autorizzare esplicitamente l'associazione con un codice di conferma per
+essere certo che nessun altro sulla rete legga o alteri i miei promemoria.
+
+- [ ] L'associazione richiede conferma su entrambi i lati tramite un codice mostrato da uno e
+      confermato dall'altro.
+- [ ] Un peer non associato che tenta di sincronizzare viene rifiutato.
+- [ ] Il traffico è cifrato: un terzo dispositivo sulla rete non legge i promemoria intercettando.
+- [ ] La dissociazione elimina le credenziali e interrompe le sincronizzazioni successive.
+
+### US-006 · Allineamento automatico delle modifiche
+**Priorità:** Must Have
+
+Come utente voglio che le modifiche fatte offline si allineino da sole al primo rientro in rete
+per non dover ricordare cosa ho cambiato e dove.
+
+- [ ] Un evento creato su un dispositivo compare sull'altro alla prima sincronizzazione utile.
+- [ ] Un evento modificato aggiorna l'altro senza duplicarsi.
+- [ ] Un evento eliminato viene eliminato anche sull'altro e non riappare in seguito.
+- [ ] Modifiche concorrenti allo stesso evento convergono allo stesso risultato su entrambi i
+      dispositivi, senza duplicati né perdita degli altri eventi.
+- [ ] Dopo una sincronizzazione che tocca eventi futuri, gli allarmi locali sono riprogrammati.
+- [ ] Gli eventi presenti prima dell'aggiornamento sopravvivono alla migrazione v2 → v3 intatti.
+
+### US-007 · Vedere lo stato della sincronizzazione
+**Priorità:** Should Have
+
+Come utente voglio vedere quando è avvenuta l'ultima sincronizzazione e con quale dispositivo
+per accorgermi se qualcosa non funziona.
+
+- [ ] Una schermata elenca il dispositivo associato con data/ora dell'ultimo sync riuscito.
+- [ ] Gli errori (peer irraggiungibile, rifiutato, timeout) sono mostrati in italiano.
+- [ ] È disponibile un comando "sincronizza ora".
+
+### US-008 · Esportare in ODS dal desktop
+**Priorità:** Should Have
+
+Come utente al PC voglio esportare i promemoria in ODS e scegliere dove salvarli per
+archiviarli o aprirli in LibreOffice come già faccio da telefono.
+
+- [ ] L'export è disponibile con i filtri esistenti (tutti / solo aperti).
+- [ ] Il file viene salvato dove sceglie l'utente e si apre correttamente in LibreOffice Calc.
+
+### US-009 · Una sola codebase
+**Priorità:** Must Have
+
+Come sviluppatore voglio una sola codebase condivisa per implementare ogni nuova feature una
+volta sola.
+
+- [ ] Dominio, dati, ViewModel, schermate ed export vivono nel modulo condiviso.
+- [ ] Il codice per piattaforma è limitato ad allarmi, notifiche, filesystem/condivisione,
+      tray/autostart e trasporto di sincronizzazione.
+- [ ] Build Android e build desktop completano entrambe da progetto pulito.
+
+### US-010 · Nessuna regressione su Android
+**Priorità:** Must Have
+
+Come utente Android voglio che l'app sul telefono continui a funzionare come prima per non
+pagare la versione desktop con regressioni sul mobile.
+
+- [ ] `applicationId`, suffisso `.debug` e firma di release restano invariati.
+- [ ] L'aggiornamento sopra l'installazione esistente conserva i promemoria.
+- [ ] Allarmi, azioni da notifica, riprogrammazione al boot ed export/share continuano a funzionare.
+
+---
+
+## 5. Architettura tecnica
+
+### Componenti coinvolti
+
+```
+┌──────────────── :shared ─────────────────────────────────────────┐
+│ commonMain                                                       │
+│   ui/{list,edit,completed,sync}  Compose Material3 + ViewModel    │
+│   data/  EventEntity · EventDao · PeerEntity · AppDatabase (Room) │
+│   export/ Exporter · ExportFilter · ExportEventsUseCase           │
+│   sync/  SyncEngine · SyncProtocol · (expect) Discovery/Transport │
+│   platform/ (expect) AlarmScheduler · Notifier · ExportTarget ·   │
+│             AppInfo · DateFormat · DatabaseFactory                │
+│                                                                  │
+│ jvmSharedMain      OdsExporter (ZipOutputStream) · actual date    │
+│   ├── androidMain  AlarmManager · NotificationHelper · Receivers  │
+│   │                ShareHelper · NsdManager                       │
+│   └── desktopMain  timer in-process · notifiche · tray ·          │
+│                    autostart · file dialog · jmdns · TLS socket   │
+└──────────────────────────────────────────────────────────────────┘
+        ▲                                              ▲
+   :androidApp                                    :desktopApp
+   Application + MainActivity + manifest          main() + AppImage
+```
+
+Flusso di sincronizzazione (punto-punto, nessun server):
+
+```
+  Android (foreground)                       Desktop (sempre in ascolto)
+        │  1. annuncio/scoperta mDNS  _promemoria-sync._tcp │
+        │ ─────────────────────────────────────────────────►│
+        │  2. HELLO + versione protocollo                   │
+        │ ◄────────────────────────────────────────────────►│
+        │  3. PAIR (solo la prima volta, codice sui due lati)│
+        │ ◄────────────────────────────────────────────────►│
+        │  4. PULL(since) / PUSH(events) su canale cifrato   │
+        │ ◄────────────────────────────────────────────────►│
+        │  5. merge LWW + tombstone → riprogrammazione allarmi
+```
+
+Il desktop è il lato sempre in ascolto perché le policy Android impediscono di mantenere un
+socket server con l'app chiusa: il telefono sincronizza all'apertura e al rientro in foreground.
+
+### Modifiche al data model
+
+| Tabella/Tipo | Tipo modifica | Dettaglio |
+|---|---|---|
+| `events` | Modifica (schema v2 → v3) | `+uuid TEXT` (identità globale, indice unico), `+updatedAt INTEGER`, `+deleted INTEGER`, `+deletedAt INTEGER NULL`, `+origin TEXT`. `id` autoincrementale **resta**: è il requestCode dei `PendingIntent` e l'id delle notifiche |
+| `events` | Modifica semantica | `delete` diventa soft-delete; tutte le letture filtrano `deleted = 0`; ogni scrittura aggiorna `updatedAt` |
+| `peers` | Nuova | `deviceId`, `displayName`, `sharedSecret`, `lastHost`, `lastPort`, `pairedAt`, `lastSyncAt` |
+| `EventDao` | Modifica | nuove query `changedSince(millis)`, `getByUuid(uuid)`, `upsertFromRemote(...)` |
+| Migrazione `MIGRATION_2_3` | Nuova | `ALTER TABLE` per le cinque colonne, popolamento `uuid` con `lower(hex(randomblob(...)))`, `updatedAt = dateTimeMillis` come valore iniziale |
+
+### Protocollo di sincronizzazione (al posto delle API REST)
+
+| Messaggio | Direzione | Descrizione | Richiede pairing |
+|---|---|---|---|
+| `HELLO` | ↔ | deviceId, nome, versione di protocollo | No |
+| `PAIR_REQUEST` / `PAIR_CONFIRM` | ↔ | scambio del codice di conferma e del segreto condiviso | No (è l'atto di associarsi) |
+| `PULL(since)` | → | richiesta degli eventi modificati dopo `since` | Sì |
+| `PUSH(events)` | → | invio degli eventi modificati localmente | Sì |
+| `ACK(highWatermark)` | ← | conferma e nuovo watermark | Sì |
+
+Trasporto: socket TCP su canale cifrato con il segreto stabilito in fase di pairing,
+serializzazione `kotlinx.serialization`. Versione di protocollo esplicita nel primo messaggio:
+peer con versione incompatibile rifiutano invece di corrompere i dati.
+
+### Breaking changes
+
+| Componente | Tipo di breaking change | Piano di migrazione |
+|---|---|---|
+| Database `reminder.db` | Schema v2 → v3, **non reversibile**: una release precedente non apre un DB v3 | Migrazione automatica all'avvio; backup del file DB prima del primo avvio della versione nuova (vedi §9) |
+| `EventDao.delete()` | Da cancellazione fisica a soft-delete | 2 soli chiamanti: `EventListViewModel.delete`, `CompletedViewModel.delete` |
+| `ExportEventsUseCase.execute()` | Ritorna `Result<ExportedFile>` invece di `Result<Uri>` | Il consumo passa a `ExportTarget`; `ExportUiState` ed `EmptyExportException` invariati |
+| `AlarmScheduler` | Da `object` statico a interfaccia iniettata | 3 ViewModel + 2 receiver aggiornati contestualmente |
+| Struttura dei moduli | I sorgenti cambiano modulo | Nessun impatto per l'utente finale; `applicationId` invariato |
+
+---
+
+## 6. Piano di implementazione
+
+Responsabile unico: Alberto Goldoni. Area: **Infra** (build/toolchain), **Core** (logica e
+piattaforma), **UI**, **Test**, **Doc**.
+
+| ID | Task | Area | Stima (gg) | Dipende da |
+|---|---|---|---:|---|
+| T-01 | Prototipo di allineamento versioni Kotlin/AGP/CMP/Room KMP che compili su Android e desktop e apra un DB su entrambi | Infra | 2,0 | — |
+| T-02 | Creazione moduli `:shared`/`:androidApp`/`:desktopApp` e spostamento dei sorgenti senza modifiche funzionali | Infra | 3,0 | T-01 |
+| T-03 | Riscrittura del rename APK con la Variant API (necessaria se T-01 impone AGP 9.x) | Infra | 0,5 | T-02 |
+| T-04 | ✅ **fatto** — `exportSchema = true` + `room.schemaLocation`, schema v2 esportato in `app/schemas/` | Core | 0,5 | — |
+| T-05 | ✅ **fatto** — `BootReceiver` legge il DAO dal container via `EntryPointAccessors`: niente secondo database senza migrazioni (R15) | Core | 0,5 | — |
+| T-06 | Rimozione di Hilt e introduzione del container DI **manuale** (12 punti di iniezione) | Core | 2,0 | T-02 |
+| T-07 | ✅ **fatto** — permesso notifiche chiesto in `MainActivity` all'avvio (R17); `RequestCodes` con blocchi da 8 slot per evento (R16). `cancel()` annulla ora anche gli snooze pendenti e i codici legacy: prima un evento rinviato e poi completato o eliminato faceva comunque scattare la notifica | Core | 0,5 | — |
+| T-08 | Room KMP: runtime, driver SQLite bundled, `DatabaseFactory` per piattaforma, percorso XDG su desktop | Core | 2,0 | T-02 |
+| T-09 | Livello `platform`: `AppInfo`, `DateFormat`, colori dinamici, interfacce `AlarmScheduler`/`Notifier` | Core | 1,0 | T-06 |
+| T-10 | UI desktop: finestra, navigazione multipiattaforma, tre schermate operative | UI | 3,0 | T-08, T-09 |
+| T-11 | Scheduler desktop in-process + recupero delle scadenze maturate ad app spenta | Core | 1,5 | T-10 |
+| T-12 | Notifiche desktop con azioni +5 min / +1 ora / completa | Core | 1,0 | T-11 |
+| T-13 | Tray: icona, menù, chiusura-a-tray, istanza singola | UI | 1,5 | T-10 |
+| T-14 | Autostart: scrittura/rimozione di `~/.config/autostart/promemoria.desktop` | Core | 0,5 | T-13 |
+| T-15 | `ExportTarget` e refactor di `ExportEventsUseCase` (via `Context`/`FileProvider`/`Log`) | Core | 1,0 | T-09 |
+| T-16 | Dialog di salvataggio nativo per l'export desktop | UI | 0,5 | T-15 |
+| T-17 | Schema v3, `MIGRATION_2_3`, DAO con soft-delete e `updatedAt` | Core | 1,5 | T-08, T-04 |
+| T-18 | Discovery mDNS: `NsdManager` su Android (con multicast lock), `jmdns` su desktop, fallback manuale host/porta | Core | 1,5 | T-17 |
+| T-19 | Pairing: codice di conferma, segreto condiviso, canale cifrato, tabella `peers` | Core | 2,5 | T-18 |
+| T-20 | `SyncProtocol` + `SyncEngine`: merge LWW, tombstone, watermark, idempotenza | Core | 3,0 | T-17 |
+| T-21 | Integrazione trasporto ↔ engine: riprogrammazione allarmi, gestione errori, sync in foreground su Android | Core | 1,5 | T-19, T-20 |
+| T-22 | Schermata stato sincronizzazione: peer, ultimo sync, errori, sync manuale, dissociazione | UI | 2,0 | T-21 |
+| T-23 | Creazione dei source set di test (`commonTest`, `jvmSharedTest`, `desktopTest`, `androidInstrumentedTest`) | Test | 0,5 | T-02 |
+| T-24 | Packaging AppImage (`jpackage --type app-image` + `appimagetool`), icona, `.desktop`, `./build.sh desktop` | Infra | 2,5 | T-13 |
+| T-25 | Unit test: merge LWW, tombstone che non risorge, idempotenza, protocollo, pairing | Test | 2,5 | T-20, T-23 |
+| T-26 | Test di migrazione 2→3 con `MigrationTestHelper` | Test | 0,5 | T-17, T-23 |
+| T-27 | Unit test: golden ODS + formattazione date | Test | 1,0 | T-15, T-23 |
+| T-28 | Unit test: scheduler desktop, autostart, istanza singola | Test | 1,0 | T-14, T-23 |
+| T-29 | Test di integrazione: due istanze desktop che si scoprono, si associano e convergono | Test | 1,5 | T-21 |
+| T-30 | Collaudo manuale telefono ↔ desktop su rete reale (inclusi casi offline e conflitto) | Test | 1,0 | T-22 |
+| T-31 | Non-regressione Android su device: allarmi, snooze, boot, export/share, aggiornamento in place | Test | 1,0 | T-21, T-24 |
+| T-32 | Aggiornamento `README.md` e `CLAUDE.md` (moduli, build desktop, requisiti di rete) | Doc | 1,0 | T-24 |
+| T-33 | Guida a pairing e rete + note di distribuzione AppImage | Doc | 1,0 | T-30 |
+
+**Stima totale: 46,5 giorni/uomo**
+**Breakdown:** Infra 8,0 gg · Core 20,5 gg · UI 7,0 gg · Test 9,0 gg · Doc 2,0 gg
+
+**Due tranche:**
+
+| Tranche | Contenuto | Task | Stima |
+|---|---|---|---:|
+| **1 — App desktop** | Tutto tranne la sincronizzazione: desktop completo, installabile, con notifiche, tray, autostart, export | T-01…T-16, T-23, T-24, T-27, T-28, T-31, T-32 | **28,0 gg** |
+| **2 — Sincronizzazione** | Schema v3, discovery, pairing, replica, UI di stato, collaudo | T-17…T-22, T-25, T-26, T-29, T-30, T-33 | **18,5 gg** |
+
+> **Anticipati il 2026-08-20:** T-04, T-05 e T-07 sono già stati eseguiti sull'app Android
+> attuale, prima dell'apertura del cantiere KMP (build debug verde). Restano **45,0 gg**.
+>
+> **Scostamento dalle stime precedenti — da leggere prima di approvare.**
+> La Fase 1 conteneva due totali fra loro incoerenti (36,0 gg nella tabella per aree, 39,0 gg
+> nella somma delle milestone) e in Fase 2 avevo scritto "stima invariata" prima di avere una
+> scomposizione a livello di task. La scomposizione qui sopra, che è quella su cui conviene
+> decidere, porta a **46,5 gg**. La differenza (+7,5 gg sul totale più alto) viene da:
+> prerequisiti emersi in Fase 2 (T-03, T-04, T-05: +1,5), il livello `platform` che nessuna
+> delle due stime precedenti conteggiava (T-09: +1,0), la sincronizzazione scomposta in quattro
+> task reali invece di due voci aggregate (+3,0), e il collaudo separato dalle implementazioni
+> (+2,0). Se il totale è eccessivo, la leva naturale è fermarsi alla tranche 1.
+
+---
+
+## 7. Piano di test
+
+**Strategia generale.** Il progetto **non ha oggi alcun test** (`app/src` contiene solo
+`debug/`, `main/`, `release/`). Non si introduce una suite completa: si copre ciò che non è
+verificabile a occhio, cioè il motore di sincronizzazione e le migrazioni di schema, più un
+presidio minimo su export e scheduler. Tutto il resto resta collaudo manuale, come oggi.
+I test unitari girano su JVM (nessun emulatore) tranne quelli di migrazione, che richiedono un
+device o emulatore Android.
+
+### Test cases critici
+
+| ID | Tipo | Descrizione | Priorità |
+|---|---|---|---|
+| TC-01 | Unit | Modifiche concorrenti allo stesso evento: entrambi i lati convergono sullo stesso stato (LWW) | Alta |
+| TC-02 | Unit | Evento cancellato su un lato non riappare dopo due cicli di sync | Alta |
+| TC-03 | Unit | Due `PUSH` identici consecutivi non duplicano eventi (idempotenza) | Alta |
+| TC-04 | Unit | Peer con versione di protocollo diversa viene rifiutato con errore esplicito | Alta |
+| TC-05 | Unit | Peer non associato rifiutato; codice di pairing errato rifiutato | Alta |
+| TC-06 | Strumentale | Migrazione 2→3: eventi v2 conservati, `uuid` popolati e univoci, `updatedAt` valorizzato | Alta |
+| TC-07 | Unit | Golden test ODS: `mimetype` STORED come primo entry, righe attese, filtro `OPEN_ONLY` | Media |
+| TC-08 | Unit | Scheduler desktop: scadenza futura programmata, scadenza passata → recupero all'avvio, snooze +5/+60 | Alta |
+| TC-09 | Unit | Autostart: creazione e rimozione del `.desktop`; secondo avvio che non duplica il processo | Media |
+| TC-10 | Integrazione | Due istanze desktop sulla stessa macchina: discovery → pairing → convergenza degli eventi | Alta |
+| TC-11 | Manuale | Telefono ↔ desktop su rete reale: creazione, modifica, cancellazione in entrambe le direzioni | Alta |
+| TC-12 | Manuale | Modifiche offline su entrambi i lati, poi rientro in rete: convergenza senza perdite | Alta |
+| TC-13 | Manuale | Notifica desktop a finestra chiusa e ad app riavviata dopo la scadenza | Alta |
+| TC-14 | Manuale | Android: allarme, snooze da notifica, riavvio device, export/share, aggiornamento sopra l'installazione esistente con dati conservati | Alta |
+| TC-15 | Manuale | Rete con multicast bloccato: messaggio chiaro e fallback manuale funzionante | Media |
+
+### Definition of Done
+
+- [ ] Tutti i test unitari passano in locale (`commonTest`, `jvmSharedTest`, `desktopTest`).
+- [ ] TC-06 eseguito su device o emulatore con esito positivo.
+- [ ] TC-11 → TC-14 eseguiti manualmente e annotati nel documento di collaudo.
+- [ ] Nessuna eccezione non gestita nei log durante una sessione di sync completa.
+- [ ] L'AppImage si avvia su una macchina pulita senza dipendenze aggiuntive.
+- [ ] `README.md` e `CLAUDE.md` aggiornati.
+- [ ] Build Android release firmata e installabile sopra la versione precedente.
+
+---
+
+## 8. Rischi e mitigazioni
+
+| Rischio | Probabilità | Impatto | Mitigazione |
+|---|---|---|---|
+| La terna Kotlin/AGP/CMP non si allinea senza attriti (salto da Kotlin 2.0.21 e AGP 8.7.3) | Media | Alto | T-01 è un prototipo throw-away che valida la terna prima di qualsiasi altro lavoro |
+| Le policy Android impediscono la sync ad app chiusa | Alta | Medio | Modello asimmetrico per progetto: desktop sempre in ascolto, Android sincronizza in foreground |
+| mDNS non passa (AP isolation, rete ospiti, VLAN) | Media | Medio | Fallback con host/porta manuali + messaggio diagnostico (TC-15) |
+| ~~`BootReceiver` apre il DB senza migrazioni~~ **risolto** con T-05 il 2026-08-20 | — | — | — |
+| ~~Collisioni di requestCode con id vicini~~ **risolto** con T-07 il 2026-08-20 | — | — | — |
+| Regressioni sull'app Android durante lo spostamento dei moduli | Media | Alto | T-02 senza modifiche funzionali + TC-14 come cancello prima di proseguire |
+| ~~Tray assente se il desktop target è GNOME Shell~~ **decaduto**: target confermato Cinnamon/X11, tray nativa | — | — | — |
+| `appimagetool` non installato sulla macchina di build | Alta (certa oggi) | Basso | Procurarlo in T-24; è un AppImage a sua volta, nessuna installazione di sistema |
+| Clock skew fra dispositivi falsa la regola LWW | Bassa | Medio | Timestamp UTC + tolleranza; in T-20 valutare un contatore di versione per evento |
+| Il totale di 46,5 gg risulta insostenibile | Media | Medio | Consegna a tranche: la tranche 1 (28,0 gg) è autonoma e già utile |
+
+---
+
+## 9. Rollout e feature flag
+
+**Strategia di rilascio:** graduale, per tranche. Non esistono ambienti di staging né canali di
+distribuzione: il rollout coincide con l'installazione sui due dispositivi dell'utente.
+
+- [x] **Tranche 1** — rilascio dell'AppImage desktop e di una build Android allineata alla nuova
+      struttura a moduli, **senza** funzioni di sincronizzazione. Il DB resta allo schema v2:
+      nessuna migrazione, nessun rischio sui dati.
+- [x] **Tranche 2** — migrazione allo schema v3 e attivazione della sincronizzazione.
+
+**Feature flag:** `sync_enabled`, impostazione applicativa persistita, **disattivata di default**.
+Finché è spenta non vengono aperti socket né annunci mDNS, e l'app si comporta come nella
+tranche 1. Si accende quando l'utente avvia il primo pairing. È un interruttore runtime, non di
+build: permette di spegnere la sync in caso di problemi senza reinstallare nulla.
+
+**Piano di rollback:**
+
+1. Disattivare `sync_enabled`: interrompe immediatamente annunci, ascolto e repliche.
+2. Se il problema è nell'app desktop, è sufficiente non avviare l'AppImage (nessuna
+   installazione di sistema da rimuovere) o rimuovere il `.desktop` di autostart.
+3. Se il problema riguarda i dati, ripristinare il backup del database:
+   - **Prima** del primo avvio della versione con schema v3 va copiato il DB di entrambi i
+     dispositivi (desktop: `~/.local/share/promemoria/reminder.db`; Android: export ODS come
+     copia leggibile, più backup del file DB se il device lo consente).
+   - La migrazione v2 → v3 **non è reversibile**: una build precedente non apre un DB v3. Il
+     rollback dell'app richiede il ripristino del file di backup.
+4. In ultima istanza, l'export ODS esistente resta la via di recupero leggibile dei dati.
+
+---
+
+## 10. Checklist di approvazione
+
+Progetto a sviluppatore singolo: i ruoli coincidono nella stessa persona, ma le voci restano
+distinte come cancelli espliciti prima di iniziare.
+
+| Revisione | Responsabile | Stato | Data |
+|---|---|---|---|
+| Revisione tecnica (architettura, protocollo, schema v3) | Alberto Goldoni | ⏳ In attesa | — |
+| Revisione di prodotto (scope, storie, esclusioni) | Alberto Goldoni | ⏳ In attesa | — |
+| Stima approvata (46,5 gg, piano completo) | Alberto Goldoni | ✅ Approvata | 2026-08-20 |
+| Rischi accettati (in particolare irreversibilità della migrazione v3) | Alberto Goldoni | ⏳ In attesa | — |
+| Decisioni #1, #2, #3 chiuse | Alberto Goldoni | ✅ Chiuse | 2026-08-20 |
+| Data di inizio confermata | Alberto Goldoni | ⏳ In attesa | — |
+
+---
+
+## Domande chiuse
+
+Risposte dell'utente del **2026-08-20**:
+
+1. **Ambiente desktop:** questa macchina — **Cinnamon / X11**. La tray è nativa, nessuna
+   estensione richiesta, US-003 resta come progettata.
+2. **Stima:** approvato il **piano completo** (46,5 gg), con consegna a tranche.
+3. **DI:** **container manuale**, niente Koin.
+4. **Fix indipendenti:** **anticipati ed eseguiti** (T-04, T-05, T-07) sull'app Android attuale.
+
+Nessuna domanda aperta residua: il documento è approvabile.
+
+---
+
+## Riferimenti
+
+- [phase-1-requirements.md](phase-1-requirements.md) — obiettivi, scope, stima iniziale, milestone
+- [phase-2-analysis.md](phase-2-analysis.md) — analisi della codebase, versioni verificate, rischi R15-R17, prerequisiti P1-P9
+- [docs/features/condivisione/](../condivisione/) — feature precedente (export ODS), riusata dal desktop
+
+---
+
+*Documento generato con la skill `claude-code-feature`.*
