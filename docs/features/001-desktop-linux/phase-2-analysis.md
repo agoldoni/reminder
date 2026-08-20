@@ -169,22 +169,23 @@ mime type), e la consegna passa a `ExportTarget`: share intent su Android (l'att
 - Messaggi (kotlinx.serialization su canale cifrato): `HELLO`, `PAIR_REQUEST`, `PAIR_CONFIRM`, `PULL(since)`, `PUSH(events)`, `ACK(highWatermark)`.
 - Versione di protocollo esplicita nel primo messaggio: un peer con versione diversa rifiuta invece di corrompere i dati.
 
-### B.6 Stack tecnico — versioni verificate il 2026-08-20
+### B.6 Stack tecnico — versioni **validate** da T-01 il 2026-08-20
 
 | Componente | Oggi | Target proposto | Fonte |
 |---|---|---|---|
-| Kotlin | 2.0.21 | ≥ 2.2 (ultima stabile **2.4.10**) | Maven Central |
-| AGP | 8.7.3 | ≥ 8.9, ultima **9.3.1** | Google Maven |
-| Compose | BOM androidx `2024.12.01` | Compose Multiplatform **1.11.1** (1.12.0-rc01 in RC) | Maven Central |
-| Room | 2.6.1, solo Android | **2.8.4**; artefatti KMP (`room-runtime-android`, `room-runtime-jvm`) disponibili da **2.7.0** | Google Maven |
-| Driver SQLite | implicito | `androidx.sqlite:sqlite-bundled` **2.7.0** (varianti `-android` / `-jvm` pubblicate) | Google Maven |
+| Kotlin | 2.0.21 | **2.3.21** — tetto imposto da KSP, non da Compose | T-01 |
+| AGP | 8.7.3 | **8.13.2** — AGP 9 non necessaria, `applicationVariants` resta valida | T-01 |
+| Compose | BOM androidx `2024.12.01` | Compose Multiplatform **1.11.1** | T-01 |
+| Room | 2.6.1, solo Android | **2.8.4** con KSP **2.3.11** | T-01 |
+| Driver SQLite | implicito | `AndroidSQLiteDriver` su Android, `sqlite-bundled` **2.7.0** solo su desktop (−1,15 MiB di APK) | T-01 |
 | Navigation Compose | androidx 2.8.5 | `org.jetbrains.androidx.navigation:navigation-compose` **2.9.2** (stabile) | Maven Central |
 | ViewModel Compose | androidx lifecycle 2.8.7 | `org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose` **2.11.0** | Maven Central |
 | DI | Hilt 2.53.1 | Koin **4.2.2** oppure container manuale | Maven Central |
 | mDNS | — | `org.jmdns:jmdns` **3.6.3** (desktop) + `NsdManager` (Android) | Maven Central |
 
-> Le versioni esistono e sono pubblicate: è verificato. **Non** è verificato quale terna
-> Kotlin/AGP/CMP compili insieme in questo progetto — è esattamente il deliverable di M0.
+> ✅ **Validato il 2026-08-20** da un prototipo che compila su Android e desktop e apre un
+> database Room reale: vedi [t01-toolchain-validation.md](t01-toolchain-validation.md).
+> Gradle **8.14.5**, JDK 21 con `jvmTarget` 17, compileSdk 36.
 
 ---
 

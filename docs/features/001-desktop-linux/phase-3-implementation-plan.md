@@ -307,14 +307,14 @@ piattaforma), **UI**, **Test**, **Doc**.
 
 | ID | Task | Area | Stima (gg) | Dipende da |
 |---|---|---|---:|---|
-| T-01 | Prototipo di allineamento versioni Kotlin/AGP/CMP/Room KMP che compili su Android e desktop e apra un DB su entrambi | Infra | 2,0 | — |
-| T-02 | Creazione moduli `:shared`/`:androidApp`/`:desktopApp` e spostamento dei sorgenti senza modifiche funzionali | Infra | 3,0 | T-01 |
-| T-03 | Riscrittura del rename APK con la Variant API (necessaria se T-01 impone AGP 9.x) | Infra | 0,5 | T-02 |
+| T-01 | ✅ **fatto** — terna validata: Gradle 8.14.5 · AGP 8.13.2 · Kotlin 2.3.21 · KSP 2.3.11 · CMP 1.11.1 · Room 2.8.4. Esito in [t01-toolchain-validation.md](t01-toolchain-validation.md) | Infra | 2,0 | — |
+| T-02 | ⏳ **in corso (1,0 di 3,0)** — toolchain aggiornata in place (Gradle 8.14.5, AGP 8.13.2, Kotlin 2.3.21, KSP 2.3.11, Room 2.8.4) con build verde e schema Room invariato; resta la creazione dei moduli e lo spostamento dei sorgenti | Infra | 3,0 | T-01 |
+| ~~T-03~~ | ❌ **rimosso** — T-01 ha validato AGP 8.13.2: `applicationVariants` resta valida e il rename dell'APK non va riscritto | Infra | ~~0,5~~ | — |
 | T-04 | ✅ **fatto** — `exportSchema = true` + `room.schemaLocation`, schema v2 esportato in `app/schemas/` | Core | 0,5 | — |
 | T-05 | ✅ **fatto** — `BootReceiver` legge il DAO dal container via `EntryPointAccessors`: niente secondo database senza migrazioni (R15) | Core | 0,5 | — |
-| T-06 | Rimozione di Hilt e introduzione del container DI **manuale** (12 punti di iniezione) | Core | 2,0 | T-02 |
+| T-06 | ✅ **fatto** — Hilt rimosso, `AppContainer` manuale, ViewModel costruiti da `viewModelFactory`, `AndroidViewModel`/`SavedStateHandle` eliminati | Core | 2,0 | — |
 | T-07 | ✅ **fatto** — permesso notifiche chiesto in `MainActivity` all'avvio (R17); `RequestCodes` con blocchi da 8 slot per evento (R16). `cancel()` annulla ora anche gli snooze pendenti e i codici legacy: prima un evento rinviato e poi completato o eliminato faceva comunque scattare la notifica | Core | 0,5 | — |
-| T-08 | Room KMP: runtime, driver SQLite bundled, `DatabaseFactory` per piattaforma, percorso XDG su desktop | Core | 2,0 | T-02 |
+| T-08 | Room KMP: runtime, **driver per piattaforma** (`AndroidSQLiteDriver` su Android, `BundledSQLiteDriver` su desktop), `DatabaseFactory`, percorso XDG | Core | 2,0 | T-02 |
 | T-09 | Livello `platform`: `AppInfo`, `DateFormat`, colori dinamici, interfacce `AlarmScheduler`/`Notifier` | Core | 1,0 | T-06 |
 | T-10 | UI desktop: finestra, navigazione multipiattaforma, tre schermate operative | UI | 3,0 | T-08, T-09 |
 | T-11 | Scheduler desktop in-process + recupero delle scadenze maturate ad app spenta | Core | 1,5 | T-10 |
@@ -341,18 +341,24 @@ piattaforma), **UI**, **Test**, **Doc**.
 | T-32 | Aggiornamento `README.md` e `CLAUDE.md` (moduli, build desktop, requisiti di rete) | Doc | 1,0 | T-24 |
 | T-33 | Guida a pairing e rete + note di distribuzione AppImage | Doc | 1,0 | T-30 |
 
-**Stima totale: 46,5 giorni/uomo**
-**Breakdown:** Infra 8,0 gg · Core 20,5 gg · UI 7,0 gg · Test 9,0 gg · Doc 2,0 gg
+**Stima totale: 46,0 giorni/uomo** (46,5 iniziali − 0,5 di T-03, rimosso)
+**Breakdown:** Infra 7,5 gg · Core 20,5 gg · UI 7,0 gg · Test 9,0 gg · Doc 2,0 gg
+**Già completati:** 5,5 gg (T-01, T-04, T-05, T-06, T-07) + 1,0 gg di T-02 — **restano 39,5 gg**
 
 **Due tranche:**
 
 | Tranche | Contenuto | Task | Stima |
 |---|---|---|---:|
-| **1 — App desktop** | Tutto tranne la sincronizzazione: desktop completo, installabile, con notifiche, tray, autostart, export | T-01…T-16, T-23, T-24, T-27, T-28, T-31, T-32 | **28,0 gg** |
+| **1 — App desktop** | Tutto tranne la sincronizzazione: desktop completo, installabile, con notifiche, tray, autostart, export | T-01…T-16 (T-03 escluso), T-23, T-24, T-27, T-28, T-31, T-32 | **27,5 gg** (24,0 residui) |
 | **2 — Sincronizzazione** | Schema v3, discovery, pairing, replica, UI di stato, collaudo | T-17…T-22, T-25, T-26, T-29, T-30, T-33 | **18,5 gg** |
 
-> **Anticipati il 2026-08-20:** T-04, T-05 e T-07 sono già stati eseguiti sull'app Android
-> attuale, prima dell'apertura del cantiere KMP (build debug verde). Restano **45,0 gg**.
+> **Stato al 2026-08-20:** completati T-01, T-04, T-05, T-06, T-07 (**5,5 gg**) più 1,0 gg di
+> T-02 (aggiornamento toolchain). **Restano 39,5 gg.**
+>
+> **Riordino rispetto al piano:** T-06 è stato anticipato prima di T-02 per un vincolo tecnico —
+> Hilt non funziona in un modulo KMP, quindi finché c'era non era possibile spostare i sorgenti
+> in `commonMain`. Toglierlo mentre la toolchain era ancora quella collaudata ha permesso di
+> verificare le due modifiche separatamente, invece di debuggarle insieme.
 >
 > **Scostamento dalle stime precedenti — da leggere prima di approvare.**
 > La Fase 1 conteneva due totali fra loro incoerenti (36,0 gg nella tabella per aree, 39,0 gg
@@ -411,7 +417,7 @@ device o emulatore Android.
 
 | Rischio | Probabilità | Impatto | Mitigazione |
 |---|---|---|---|
-| La terna Kotlin/AGP/CMP non si allinea senza attriti (salto da Kotlin 2.0.21 e AGP 8.7.3) | Media | Alto | T-01 è un prototipo throw-away che valida la terna prima di qualsiasi altro lavoro |
+| ~~La terna Kotlin/AGP/CMP non si allinea~~ **risolto**: T-01 ha validato lo stack su entrambi i target il 2026-08-20 | — | — | — |
 | Le policy Android impediscono la sync ad app chiusa | Alta | Medio | Modello asimmetrico per progetto: desktop sempre in ascolto, Android sincronizza in foreground |
 | mDNS non passa (AP isolation, rete ospiti, VLAN) | Media | Medio | Fallback con host/porta manuali + messaggio diagnostico (TC-15) |
 | ~~`BootReceiver` apre il DB senza migrazioni~~ **risolto** con T-05 il 2026-08-20 | — | — | — |
