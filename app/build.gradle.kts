@@ -26,7 +26,7 @@ android {
             storeFile = file(System.getenv("KEYSTORE_FILE") ?: "${System.getProperty("user.home")}/.android/release-key.jks")
             storePassword = System.getenv("KEYSTORE_PASSWORD") ?: ""
             keyAlias = System.getenv("KEY_ALIAS") ?: "release"
-            keyPassword = System.getenv("KEY_PASSWORD") ?: ""
+            keyPassword = System.getenv("KEY_PASSWORD") ?: System.getenv("KEYSTORE_PASSWORD") ?: ""
         }
     }
 
@@ -44,6 +44,16 @@ android {
                 "proguard-rules.pro"
             )
             resValue("string", "app_name_override", "Promemoria")
+        }
+    }
+
+    // APK di release rinominato in reminder-<versionName>.apk
+    applicationVariants.all {
+        if (buildType.name == "release") {
+            outputs.all {
+                (this as com.android.build.gradle.internal.api.BaseVariantOutputImpl)
+                    .outputFileName = "reminder-$versionName.apk"
+            }
         }
     }
     compileOptions {

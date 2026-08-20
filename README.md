@@ -82,7 +82,7 @@ Per il build di release è necessario un keystore di firma. Variabili d'ambiente
 | `KEYSTORE_FILE` | Percorso del keystore | `~/.android/release-key.jks` |
 | `KEYSTORE_PASSWORD` | Password del keystore | — |
 | `KEY_ALIAS` | Alias della chiave | `release` |
-| `KEY_PASSWORD` | Password della chiave | — |
+| `KEY_PASSWORD` | Password della chiave | valore di `KEYSTORE_PASSWORD` |
 
 ## Struttura del progetto
 
