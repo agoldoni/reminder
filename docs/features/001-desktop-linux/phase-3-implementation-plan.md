@@ -330,7 +330,7 @@ piattaforma), **UI**, **Test**, **Doc**.
 | T-21 | Integrazione trasporto ↔ engine: riprogrammazione allarmi, gestione errori, sync in foreground su Android | Core | 1,5 | T-19, T-20 |
 | T-22 | Schermata stato sincronizzazione: peer, ultimo sync, errori, sync manuale, dissociazione | UI | 2,0 | T-21 |
 | T-23 | ⏳ **in corso** — creati `desktopApp/src/test`, `commonTest` (dipendenze) e `jvmSharedTest`; resta `androidInstrumentedTest` per i test di migrazione | Test | 0,5 | T-02 |
-| T-24 | Packaging AppImage (`jpackage --type app-image` + `appimagetool`), icona, `.desktop`, `./build.sh desktop` | Infra | 2,5 | T-13 |
+| T-24 | ✅ **fatto** — `./build.sh desktop` produce un AppImage da 69,6 MB: `createDistributable` + AppDir + `appimagetool`. Icona, `.desktop` e `AppRun` inclusi; `APPIMAGE` risulta valorizzato a runtime, quindi l'autostart funziona dall'AppImage | Infra | 2,5 | T-13 |
 | T-25 | Unit test: merge LWW, tombstone che non risorge, idempotenza, protocollo, pairing | Test | 2,5 | T-20, T-23 |
 | T-26 | Test di migrazione 2→3 con `MigrationTestHelper` | Test | 0,5 | T-17, T-23 |
 | T-27 | ✅ **fatto** — 10 test: struttura ODS (mimetype STORED per primo, manifest, contenuto), escape XML e le maschere di data | Test | 1,0 | T-15, T-23 |
@@ -338,12 +338,12 @@ piattaforma), **UI**, **Test**, **Doc**.
 | T-29 | Test di integrazione: due istanze desktop che si scoprono, si associano e convergono | Test | 1,5 | T-21 |
 | T-30 | Collaudo manuale telefono ↔ desktop su rete reale (inclusi casi offline e conflitto) | Test | 1,0 | T-22 |
 | T-31 | ⏳ **in corso (0,5 di 1,0)** — su device: avvio, creazione evento, allarme programmato (`dumpsys alarm`), completamento con annullamento dell'allarme, schermata Fatti, eliminazione, dialog Info e **aggiornamento in place dalla versione pre-KMP con i dati conservati**. Restano snooze da notifica, riprogrammazione al boot ed export/share | Test | 1,0 | T-21, T-24 |
-| T-32 | Aggiornamento `README.md` e `CLAUDE.md` (moduli, build desktop, requisiti di rete) | Doc | 1,0 | T-24 |
+| T-32 | ⏳ **in corso (0,7 di 1,0)** — `README.md` e `CLAUDE.md` aggiornati a moduli, build desktop e AppImage; i requisiti di rete della sync restano da scrivere quando la tranche 2 esisterà | Doc | 1,0 | T-24 |
 | T-33 | Guida a pairing e rete + note di distribuzione AppImage | Doc | 1,0 | T-30 |
 
 **Stima totale: 46,0 giorni/uomo** (46,5 iniziali − 0,5 di T-03, rimosso)
 **Breakdown:** Infra 7,5 gg · Core 20,5 gg · UI 7,0 gg · Test 9,0 gg · Doc 2,0 gg
-**Già completati:** 22,5 gg (T-01, T-02, T-04…T-16, T-27, più metà di T-28 e di T-31) — **restano 23,5 gg**, di cui **5,0 per chiudere la tranche 1**
+**Già completati:** 25,7 gg (T-01, T-02, T-04…T-16, T-24, T-27, gran parte di T-32, più metà di T-28 e di T-31) — **restano 20,3 gg**, di cui **1,8 per chiudere la tranche 1**
 
 **Due tranche:**
 

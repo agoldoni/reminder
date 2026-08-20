@@ -15,7 +15,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -41,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import it.agoldoni.reminder.platform.LocalAppContainer
 import it.agoldoni.reminder.platform.formatDateTime
+import it.agoldoni.reminder.ui.icons.RestoreIcon
 import it.agoldoni.reminder.data.EventEntity
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -165,7 +165,7 @@ private fun CompletedEventCard(
                 modifier = Modifier.size(40.dp)
             ) {
                 Icon(
-                    Icons.Default.Restore,
+                    RestoreIcon,
                     contentDescription = "Ripristina",
                     tint = MaterialTheme.colorScheme.primary
                 )

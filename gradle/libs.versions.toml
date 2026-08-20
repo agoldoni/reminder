@@ -7,6 +7,7 @@ room = "2.8.4"
 sqlite = "2.7.0"
 lifecycleViewmodel = "2.10.0"
 navigationCompose = "2.9.2"
+materialIconsCore = "1.7.3"
 coroutines = "1.10.2"
 coreKtx = "1.15.0"
 activityCompose = "1.9.3"
@@ -19,6 +20,7 @@ room-compiler = { group = "androidx.room", name = "room-compiler", version.ref =
 sqlite-bundled = { group = "androidx.sqlite", name = "sqlite-bundled", version.ref = "sqlite" }
 lifecycle-viewmodel-compose = { group = "org.jetbrains.androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "lifecycleViewmodel" }
 navigation-compose = { group = "org.jetbrains.androidx.navigation", name = "navigation-compose", version.ref = "navigationCompose" }
+material-icons-core = { group = "org.jetbrains.compose.material", name = "material-icons-core", version.ref = "materialIconsCore" }
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
 kotlinx-coroutines-swing = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-swing", version.ref = "coroutines" }
 

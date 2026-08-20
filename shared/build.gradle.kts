@@ -32,7 +32,7 @@ kotlin {
                 api(compose.runtime)
                 api(compose.foundation)
                 api(compose.material3)
-                api(compose.materialIconsExtended)
+                api(libs.material.icons.core)
                 api(libs.room.runtime)
                 api(libs.lifecycle.viewmodel.compose)
                 api(libs.navigation.compose)
