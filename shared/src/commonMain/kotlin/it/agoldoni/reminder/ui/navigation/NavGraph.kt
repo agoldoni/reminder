@@ -1,6 +1,9 @@
 package it.agoldoni.reminder.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -12,8 +15,13 @@ import it.agoldoni.reminder.ui.edit.EventEditScreen
 import it.agoldoni.reminder.ui.list.EventListScreen
 
 @Composable
-fun ReminderNavHost() {
+fun ReminderNavHost(navigationRequests: Flow<String> = emptyFlow()) {
     val navController = rememberNavController()
+
+    // Rotte richieste da fuori la composizione (menù della tray su desktop)
+    LaunchedEffect(navigationRequests) {
+        navigationRequests.collect { route -> navController.navigate(route) }
+    }
 
     NavHost(navController = navController, startDestination = "list") {
         composable("list") {

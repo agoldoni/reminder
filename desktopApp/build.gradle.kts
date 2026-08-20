@@ -13,6 +13,8 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     // Dispatchers.Main sulla JVM desktop: senza questo viewModelScope non parte
     implementation(libs.kotlinx.coroutines.swing)
+
+    testImplementation(kotlin("test"))
 }
 
 application { mainClass.set("it.agoldoni.reminder.desktop.MainKt") }

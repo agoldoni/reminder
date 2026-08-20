@@ -6,6 +6,8 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import it.agoldoni.reminder.di.AppContainer
 import it.agoldoni.reminder.ui.navigation.ReminderNavHost
 import it.agoldoni.reminder.ui.theme.ReminderTheme
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 
 /** Container delle dipendenze visibile a tutte le schermate. */
 val LocalAppContainer = staticCompositionLocalOf<AppContainer> {
@@ -14,10 +16,13 @@ val LocalAppContainer = staticCompositionLocalOf<AppContainer> {
 
 /** Radice comune ad Android e desktop: container + tema + navigazione. */
 @Composable
-fun ReminderRoot(container: AppContainer) {
+fun ReminderRoot(
+    container: AppContainer,
+    navigationRequests: Flow<String> = emptyFlow()
+) {
     CompositionLocalProvider(LocalAppContainer provides container) {
         ReminderTheme {
-            ReminderNavHost()
+            ReminderNavHost(navigationRequests)
         }
     }
 }
