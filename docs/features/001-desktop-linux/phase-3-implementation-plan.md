@@ -337,13 +337,13 @@ piattaforma), **UI**, **Test**, **Doc**.
 | T-28 | ⏳ **in corso (0,5 di 1,0)** — 6 test verdi su autostart e istanza singola; resta lo scheduler desktop | Test | 1,0 | T-14, T-23 |
 | T-29 | Test di integrazione: due istanze desktop che si scoprono, si associano e convergono | Test | 1,5 | T-21 |
 | T-30 | Collaudo manuale telefono ↔ desktop su rete reale (inclusi casi offline e conflitto) | Test | 1,0 | T-22 |
-| T-31 | Non-regressione Android su device: allarmi, snooze, boot, export/share, aggiornamento in place | Test | 1,0 | T-21, T-24 |
+| T-31 | ⏳ **in corso (0,5 di 1,0)** — su device: avvio, creazione evento, allarme programmato (`dumpsys alarm`), completamento con annullamento dell'allarme, schermata Fatti, eliminazione, dialog Info e **aggiornamento in place dalla versione pre-KMP con i dati conservati**. Restano snooze da notifica, riprogrammazione al boot ed export/share | Test | 1,0 | T-21, T-24 |
 | T-32 | Aggiornamento `README.md` e `CLAUDE.md` (moduli, build desktop, requisiti di rete) | Doc | 1,0 | T-24 |
 | T-33 | Guida a pairing e rete + note di distribuzione AppImage | Doc | 1,0 | T-30 |
 
 **Stima totale: 46,0 giorni/uomo** (46,5 iniziali − 0,5 di T-03, rimosso)
 **Breakdown:** Infra 7,5 gg · Core 20,5 gg · UI 7,0 gg · Test 9,0 gg · Doc 2,0 gg
-**Già completati:** 18,5 gg (T-01, T-02, T-04…T-09, T-11…T-14, 2,0 di T-10 e 0,5 di T-28) — **restano 27,5 gg**
+**Già completati:** 19,0 gg (T-01, T-02, T-04…T-09, T-11…T-14, 2,0 di T-10, 0,5 di T-28 e 0,5 di T-31) — **restano 27,0 gg**
 
 **Due tranche:**
 
