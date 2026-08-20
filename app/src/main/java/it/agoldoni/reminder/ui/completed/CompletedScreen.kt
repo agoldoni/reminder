@@ -38,7 +38,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.viewmodel.compose.viewModel
+import it.agoldoni.reminder.di.appContainer
 import it.agoldoni.reminder.data.EventEntity
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -48,7 +50,7 @@ import java.util.Locale
 @Composable
 fun CompletedScreen(
     onBack: () -> Unit,
-    viewModel: CompletedViewModel = hiltViewModel()
+    viewModel: CompletedViewModel = viewModel(factory = LocalContext.current.appContainer.viewModelFactory)
 ) {
     val events by viewModel.events.collectAsState()
     var eventToDelete by remember { mutableStateOf<EventEntity?>(null) }

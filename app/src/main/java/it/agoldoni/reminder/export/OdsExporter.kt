@@ -10,7 +10,6 @@ import java.util.Locale
 import java.util.zip.CRC32
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
-import javax.inject.Inject
 
 /**
  * Genera un file ODS (OpenDocument Spreadsheet) minimale conforme a ODF 1.2.
@@ -18,7 +17,7 @@ import javax.inject.Inject
  * `META-INF/manifest.xml`, `content.xml`. Implementazione manuale per evitare
  * dipendenze JVM non disponibili su Android (es. StAX in SODS).
  */
-class OdsExporter @Inject constructor() : Exporter {
+class OdsExporter : Exporter {
 
     override val mimeType: String = "application/vnd.oasis.opendocument.spreadsheet"
     override val fileExtension: String = "ods"

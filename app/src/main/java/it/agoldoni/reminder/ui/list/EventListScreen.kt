@@ -48,7 +48,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.viewmodel.compose.viewModel
+import it.agoldoni.reminder.di.appContainer
 import it.agoldoni.reminder.BuildConfig
 import it.agoldoni.reminder.data.EventEntity
 import it.agoldoni.reminder.export.ExportFilter
@@ -63,7 +65,7 @@ fun EventListScreen(
     onAddEvent: () -> Unit,
     onEditEvent: (Long) -> Unit,
     onNavigateToCompleted: () -> Unit,
-    viewModel: EventListViewModel = hiltViewModel()
+    viewModel: EventListViewModel = viewModel(factory = LocalContext.current.appContainer.viewModelFactory)
 ) {
     val events by viewModel.events.collectAsState()
     val exportState by viewModel.exportState.collectAsState()

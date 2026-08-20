@@ -4,7 +4,6 @@ import android.content.Context
 import android.net.Uri
 import android.util.Log
 import androidx.core.content.FileProvider
-import dagger.hilt.android.qualifiers.ApplicationContext
 import it.agoldoni.reminder.data.EventDao
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -12,10 +11,9 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import javax.inject.Inject
 
-class ExportEventsUseCase @Inject constructor(
-    @ApplicationContext private val context: Context,
+class ExportEventsUseCase(
+    private val context: Context,
     private val dao: EventDao,
     private val exporter: Exporter
 ) {

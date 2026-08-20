@@ -1,9 +1,8 @@
 package it.agoldoni.reminder.ui.completed
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import android.content.Context
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import dagger.hilt.android.lifecycle.HiltViewModel
 import it.agoldoni.reminder.alarm.AlarmScheduler
 import it.agoldoni.reminder.data.EventDao
 import it.agoldoni.reminder.data.EventEntity
@@ -11,13 +10,11 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import javax.inject.Inject
 
-@HiltViewModel
-class CompletedViewModel @Inject constructor(
+class CompletedViewModel(
     private val dao: EventDao,
-    application: Application
-) : AndroidViewModel(application) {
+    private val appContext: Context
+) : ViewModel() {
 
     val events: StateFlow<List<EventEntity>> = dao.getCompletedSortedDesc()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -25,7 +22,7 @@ class CompletedViewModel @Inject constructor(
     fun restore(event: EventEntity) {
         viewModelScope.launch {
             dao.markActive(event.id)
-            AlarmScheduler.schedule(getApplication(), event)
+            AlarmScheduler.schedule(appContext, event)
         }
     }
 

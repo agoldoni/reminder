@@ -1,7 +1,15 @@
 package it.agoldoni.reminder
 
 import android.app.Application
-import dagger.hilt.android.HiltAndroidApp
+import it.agoldoni.reminder.di.AppContainer
 
-@HiltAndroidApp
-class ReminderApp : Application()
+class ReminderApp : Application() {
+
+    lateinit var container: AppContainer
+        private set
+
+    override fun onCreate() {
+        super.onCreate()
+        container = AppContainer(this)
+    }
+}

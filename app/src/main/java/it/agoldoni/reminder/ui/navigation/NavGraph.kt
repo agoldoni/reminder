@@ -25,8 +25,11 @@ fun ReminderNavHost() {
         composable(
             route = "edit/{eventId}",
             arguments = listOf(navArgument("eventId") { type = NavType.LongType })
-        ) {
-            EventEditScreen(onBack = { navController.popBackStack() })
+        ) { backStackEntry ->
+            EventEditScreen(
+                eventId = backStackEntry.arguments?.getLong("eventId") ?: 0L,
+                onBack = { navController.popBackStack() }
+            )
         }
         composable("completed") {
             CompletedScreen(onBack = { navController.popBackStack() })

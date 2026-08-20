@@ -40,7 +40,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.viewmodel.compose.viewModel
+import it.agoldoni.reminder.di.appContainer
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -57,8 +59,10 @@ private val advanceOptions = listOf(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EventEditScreen(
+    eventId: Long,
     onBack: () -> Unit,
-    viewModel: EventEditViewModel = hiltViewModel()
+    viewModel: EventEditViewModel =
+        viewModel(factory = LocalContext.current.appContainer.eventEditViewModelFactory(eventId))
 ) {
     val title by viewModel.title.collectAsState()
     val description by viewModel.description.collectAsState()

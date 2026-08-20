@@ -3,11 +3,9 @@ package it.agoldoni.reminder.export
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import dagger.hilt.android.qualifiers.ApplicationContext
-import javax.inject.Inject
 
-class ShareHelper @Inject constructor(
-    @ApplicationContext private val context: Context,
+class ShareHelper(
+    private val context: Context,
     private val exporter: Exporter
 ) {
 

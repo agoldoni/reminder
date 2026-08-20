@@ -1,9 +1,8 @@
 package it.agoldoni.reminder.ui.list
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
+import android.content.Context
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import dagger.hilt.android.lifecycle.HiltViewModel
 import it.agoldoni.reminder.alarm.AlarmScheduler
 import it.agoldoni.reminder.data.EventDao
 import it.agoldoni.reminder.data.EventEntity
@@ -17,15 +16,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import javax.inject.Inject
 
-@HiltViewModel
-class EventListViewModel @Inject constructor(
+class EventListViewModel(
     private val dao: EventDao,
     private val exportEventsUseCase: ExportEventsUseCase,
     private val shareHelper: ShareHelper,
-    application: Application
-) : AndroidViewModel(application) {
+    private val appContext: Context
+) : ViewModel() {
 
     val events: StateFlow<List<EventEntity>> = dao.getActiveSortedAsc()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -36,14 +33,14 @@ class EventListViewModel @Inject constructor(
     fun delete(event: EventEntity) {
         viewModelScope.launch {
             dao.delete(event)
-            AlarmScheduler.cancel(getApplication(), event.id)
+            AlarmScheduler.cancel(appContext, event.id)
         }
     }
 
     fun markCompleted(event: EventEntity) {
         viewModelScope.launch {
             dao.markCompleted(event.id)
-            AlarmScheduler.cancel(getApplication(), event.id)
+            AlarmScheduler.cancel(appContext, event.id)
         }
     }
 

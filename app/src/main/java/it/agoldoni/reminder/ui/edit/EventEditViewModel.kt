@@ -1,26 +1,20 @@
 package it.agoldoni.reminder.ui.edit
 
-import android.app.Application
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.SavedStateHandle
+import android.content.Context
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import dagger.hilt.android.lifecycle.HiltViewModel
 import it.agoldoni.reminder.alarm.AlarmScheduler
 import it.agoldoni.reminder.data.EventDao
 import it.agoldoni.reminder.data.EventEntity
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import javax.inject.Inject
 
-@HiltViewModel
-class EventEditViewModel @Inject constructor(
+class EventEditViewModel(
     private val dao: EventDao,
-    savedStateHandle: SavedStateHandle,
-    application: Application
-) : AndroidViewModel(application) {
-
-    val eventId: Long = savedStateHandle.get<Long>("eventId") ?: 0L
+    val eventId: Long,
+    private val appContext: Context
+) : ViewModel() {
 
     private val _title = MutableStateFlow("")
     val title = _title.asStateFlow()
@@ -72,7 +66,7 @@ class EventEditViewModel @Inject constructor(
                 dao.update(event)
                 event
             }
-            AlarmScheduler.schedule(getApplication(), savedEvent)
+            AlarmScheduler.schedule(appContext, savedEvent)
             _saved.value = true
         }
     }
