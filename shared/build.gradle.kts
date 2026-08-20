@@ -39,6 +39,9 @@ kotlin {
                 implementation(libs.kotlinx.coroutines.core)
             }
         }
+        val commonTest by getting {
+            dependencies { implementation(kotlin("test")) }
+        }
         val desktopMain by getting {
             dependencies {
                 // Su desktop SQLite non è garantito dal sistema: driver bundled

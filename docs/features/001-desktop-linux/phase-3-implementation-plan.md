@@ -316,24 +316,24 @@ piattaforma), **UI**, **Test**, **Doc**.
 | T-07 | ✅ **fatto** — permesso notifiche chiesto in `MainActivity` all'avvio (R17); `RequestCodes` con blocchi da 8 slot per evento (R16). `cancel()` annulla ora anche gli snooze pendenti e i codici legacy: prima un evento rinviato e poi completato o eliminato faceva comunque scattare la notifica | Core | 0,5 | — |
 | T-08 | ✅ **fatto** — Room KMP con `@ConstructedBy`, migrazione riscritta su `SQLiteConnection`, driver per piattaforma, DB desktop in `~/.local/share/promemoria`; `identityHash` dello schema invariato | Core | 2,0 | T-02 |
 | T-09 | ✅ **fatto** (Notifier rimandato a T-12) — `AppInfo`, date in `jvmSharedMain`, colori dinamici `expect/actual`, `AlarmScheduler` come interfaccia, `LocalAppContainer` | Core | 1,0 | T-06 |
-| T-10 | ⏳ **in corso (2,0 di 3,0)** — finestra desktop, navigazione multipiattaforma e lista verificate con dati reali; restano layout desktop e prova di editor/completati | UI | 3,0 | T-08, T-09 |
+| T-10 | ✅ **fatto** — finestra 900×700, navigazione multipiattaforma e le tre schermate verificate su desktop con dati reali (lista, editor di un evento esistente, Fatti) | UI | 3,0 | T-08, T-09 |
 | T-11 | ✅ **fatto** — `DesktopAlarmScheduler`: una coroutine in attesa per evento, `bootstrap()` riprogramma i futuri e recupera gli scaduti all'avvio (nuova query DAO `getOverdueEvents`) | Core | 1,5 | T-10 |
 | T-12 | ✅ **fatto** — `DesktopNotifier` via `notify-send` (libnotify ≥ 0.8, azioni con `-A`); +5 min, +1 ora e Completa; verificate a runtime su Cinnamon | Core | 1,0 | T-11 |
 | T-13 | ✅ **fatto** — tray con icona propria e menù (Apri · Nuovo promemoria · Avvia al login · Esci), chiusura-a-tray, istanza singola via socket sul loopback che riporta in primo piano la finestra esistente | UI | 1,5 | T-10 |
 | T-14 | ✅ **fatto** — `Autostart` scrive/rimuove il `.desktop` XDG; il comando di avvio viene da `APPIMAGE`, e senza di esso la voce di menù non compare | Core | 0,5 | T-13 |
-| T-15 | `ExportTarget` e refactor di `ExportEventsUseCase` (via `Context`/`FileProvider`/`Log`) | Core | 1,0 | T-09 |
-| T-16 | Dialog di salvataggio nativo per l'export desktop | UI | 0,5 | T-15 |
+| T-15 | ✅ **fatto** — `ExportTarget` per piattaforma e use case comune; `Exporter` restituisce `ByteArray` invece di scrivere su `OutputStream` | Core | 1,0 | T-09 |
+| T-16 | ✅ **fatto** — `FileDialog` nativo in modalità salvataggio; annullare non scrive nulla | UI | 0,5 | T-15 |
 | T-17 | Schema v3, `MIGRATION_2_3`, DAO con soft-delete e `updatedAt` | Core | 1,5 | T-08, T-04 |
 | T-18 | Discovery mDNS: `NsdManager` su Android (con multicast lock), `jmdns` su desktop, fallback manuale host/porta | Core | 1,5 | T-17 |
 | T-19 | Pairing: codice di conferma, segreto condiviso, canale cifrato, tabella `peers` | Core | 2,5 | T-18 |
 | T-20 | `SyncProtocol` + `SyncEngine`: merge LWW, tombstone, watermark, idempotenza | Core | 3,0 | T-17 |
 | T-21 | Integrazione trasporto ↔ engine: riprogrammazione allarmi, gestione errori, sync in foreground su Android | Core | 1,5 | T-19, T-20 |
 | T-22 | Schermata stato sincronizzazione: peer, ultimo sync, errori, sync manuale, dissociazione | UI | 2,0 | T-21 |
-| T-23 | ⏳ **in corso** — creato `desktopApp/src/test` (i primi test del progetto); restano `commonTest`, `jvmSharedTest` e `androidInstrumentedTest` | Test | 0,5 | T-02 |
+| T-23 | ⏳ **in corso** — creati `desktopApp/src/test`, `commonTest` (dipendenze) e `jvmSharedTest`; resta `androidInstrumentedTest` per i test di migrazione | Test | 0,5 | T-02 |
 | T-24 | Packaging AppImage (`jpackage --type app-image` + `appimagetool`), icona, `.desktop`, `./build.sh desktop` | Infra | 2,5 | T-13 |
 | T-25 | Unit test: merge LWW, tombstone che non risorge, idempotenza, protocollo, pairing | Test | 2,5 | T-20, T-23 |
 | T-26 | Test di migrazione 2→3 con `MigrationTestHelper` | Test | 0,5 | T-17, T-23 |
-| T-27 | Unit test: golden ODS + formattazione date | Test | 1,0 | T-15, T-23 |
+| T-27 | ✅ **fatto** — 10 test: struttura ODS (mimetype STORED per primo, manifest, contenuto), escape XML e le maschere di data | Test | 1,0 | T-15, T-23 |
 | T-28 | ⏳ **in corso (0,5 di 1,0)** — 6 test verdi su autostart e istanza singola; resta lo scheduler desktop | Test | 1,0 | T-14, T-23 |
 | T-29 | Test di integrazione: due istanze desktop che si scoprono, si associano e convergono | Test | 1,5 | T-21 |
 | T-30 | Collaudo manuale telefono ↔ desktop su rete reale (inclusi casi offline e conflitto) | Test | 1,0 | T-22 |
@@ -343,7 +343,7 @@ piattaforma), **UI**, **Test**, **Doc**.
 
 **Stima totale: 46,0 giorni/uomo** (46,5 iniziali − 0,5 di T-03, rimosso)
 **Breakdown:** Infra 7,5 gg · Core 20,5 gg · UI 7,0 gg · Test 9,0 gg · Doc 2,0 gg
-**Già completati:** 19,0 gg (T-01, T-02, T-04…T-09, T-11…T-14, 2,0 di T-10, 0,5 di T-28 e 0,5 di T-31) — **restano 27,0 gg**
+**Già completati:** 22,5 gg (T-01, T-02, T-04…T-16, T-27, più metà di T-28 e di T-31) — **restano 23,5 gg**, di cui **5,0 per chiudere la tranche 1**
 
 **Due tranche:**
 
