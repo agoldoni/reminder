@@ -21,4 +21,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "Reminder"
-include(":app")
+include(":shared", ":androidApp", ":desktopApp")

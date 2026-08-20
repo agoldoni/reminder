@@ -7,7 +7,7 @@
 
 AUTHOR="Alberto Goldoni"
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
-APK="$PROJECT_DIR/app/build/outputs/apk/debug/app-debug.apk"
+APK="$PROJECT_DIR/androidApp/build/outputs/apk/debug/androidApp-debug.apk"
 PACKAGE="it.agoldoni.reminder.debug"
 GRADLE_FILE="$PROJECT_DIR/app/build.gradle.kts"
 

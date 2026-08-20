@@ -91,6 +91,14 @@ ancora in Beta: ogni build produce due warning. Si silenziano con
 compilerOptions { freeCompilerArgs.add("-Xexpect-actual-classes") }
 ```
 
+### 3.6 `Dispatchers.Main` non esiste sulla JVM desktop
+
+Emerso eseguendo l'app vera, non il prototipo: la finestra si apriva e la lista restava vuota
+anche con eventi nel database. Causa: `viewModelScope` usa `Dispatchers.Main`, che su desktop
+richiede l'artefatto **`kotlinx-coroutines-swing`**. Senza, ogni `viewModelScope.launch` e ogni
+`stateIn(viewModelScope, …)` non parte mai — silenziosamente, senza crash. Va dichiarato nel
+modulo `:desktopApp`.
+
 ## 4. Conseguenze sul piano
 
 - **T-01** chiuso.

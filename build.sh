@@ -30,7 +30,7 @@ case "$BUILD_TYPE" in
     debug)
         echo "[INFO] Avvio build debug..."
         ./gradlew assembleDebug
-        APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
+        APK_PATH="androidApp/build/outputs/apk/debug/androidApp-debug.apk"
         ;;
     release)
         # Verifica che le credenziali di firma siano disponibili
@@ -49,8 +49,8 @@ case "$BUILD_TYPE" in
         fi
         echo "[INFO] Avvio build release..."
         ./gradlew assembleRelease
-        VERSION_NAME="$(sed -nE 's/^[[:space:]]*versionName[[:space:]]*=[[:space:]]*"(.*)".*/\1/p' app/build.gradle.kts | head -1)"
-        APK_PATH="app/build/outputs/apk/release/reminder-${VERSION_NAME}.apk"
+        VERSION_NAME="$(sed -nE 's/^[[:space:]]*versionName[[:space:]]*=[[:space:]]*"(.*)".*/\1/p' androidApp/build.gradle.kts | head -1)"
+        APK_PATH="androidApp/build/outputs/apk/release/reminder-${VERSION_NAME}.apk"
         ;;
     clean)
         echo "[INFO] Pulizia progetto..."
