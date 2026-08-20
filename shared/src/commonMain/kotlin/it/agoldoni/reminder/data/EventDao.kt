@@ -36,6 +36,9 @@ interface EventDao {
     @Query("SELECT * FROM events WHERE completed = 0 AND dateTimeMillis - advanceMinutes * 60000 > :nowMillis")
     suspend fun getFutureEvents(nowMillis: Long): List<EventEntity>
 
+    @Query("SELECT * FROM events WHERE completed = 0 AND dateTimeMillis - advanceMinutes * 60000 <= :nowMillis ORDER BY dateTimeMillis ASC")
+    suspend fun getOverdueEvents(nowMillis: Long): List<EventEntity>
+
     @Query("SELECT * FROM events ORDER BY dateTimeMillis ASC")
     suspend fun getAll(): List<EventEntity>
 

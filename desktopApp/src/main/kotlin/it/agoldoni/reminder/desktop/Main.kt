@@ -14,9 +14,13 @@ import it.agoldoni.reminder.platform.nowMillis
 
 fun main() {
     val database = createAppDatabase()
+    val eventDao = database.eventDao()
+    val alarmScheduler = DesktopAlarmScheduler(eventDao)
+    alarmScheduler.bootstrap()
+
     val container = AppContainer(
-        eventDao = database.eventDao(),
-        alarmScheduler = DesktopAlarmScheduler(),
+        eventDao = eventDao,
+        alarmScheduler = alarmScheduler,
         appInfo = AppInfo(
             author = "Alberto Goldoni",
             version = "1.0",

@@ -317,8 +317,8 @@ piattaforma), **UI**, **Test**, **Doc**.
 | T-08 | ✅ **fatto** — Room KMP con `@ConstructedBy`, migrazione riscritta su `SQLiteConnection`, driver per piattaforma, DB desktop in `~/.local/share/promemoria`; `identityHash` dello schema invariato | Core | 2,0 | T-02 |
 | T-09 | ✅ **fatto** (Notifier rimandato a T-12) — `AppInfo`, date in `jvmSharedMain`, colori dinamici `expect/actual`, `AlarmScheduler` come interfaccia, `LocalAppContainer` | Core | 1,0 | T-06 |
 | T-10 | ⏳ **in corso (2,0 di 3,0)** — finestra desktop, navigazione multipiattaforma e lista verificate con dati reali; restano layout desktop e prova di editor/completati | UI | 3,0 | T-08, T-09 |
-| T-11 | Scheduler desktop in-process + recupero delle scadenze maturate ad app spenta | Core | 1,5 | T-10 |
-| T-12 | Notifiche desktop con azioni +5 min / +1 ora / completa | Core | 1,0 | T-11 |
+| T-11 | ✅ **fatto** — `DesktopAlarmScheduler`: una coroutine in attesa per evento, `bootstrap()` riprogramma i futuri e recupera gli scaduti all'avvio (nuova query DAO `getOverdueEvents`) | Core | 1,5 | T-10 |
+| T-12 | ✅ **fatto** — `DesktopNotifier` via `notify-send` (libnotify ≥ 0.8, azioni con `-A`); +5 min, +1 ora e Completa; verificate a runtime su Cinnamon | Core | 1,0 | T-11 |
 | T-13 | Tray: icona, menù, chiusura-a-tray, istanza singola | UI | 1,5 | T-10 |
 | T-14 | Autostart: scrittura/rimozione di `~/.config/autostart/promemoria.desktop` | Core | 0,5 | T-13 |
 | T-15 | `ExportTarget` e refactor di `ExportEventsUseCase` (via `Context`/`FileProvider`/`Log`) | Core | 1,0 | T-09 |
@@ -343,7 +343,7 @@ piattaforma), **UI**, **Test**, **Doc**.
 
 **Stima totale: 46,0 giorni/uomo** (46,5 iniziali − 0,5 di T-03, rimosso)
 **Breakdown:** Infra 7,5 gg · Core 20,5 gg · UI 7,0 gg · Test 9,0 gg · Doc 2,0 gg
-**Già completati:** 13,5 gg (T-01, T-02, T-04, T-05, T-06, T-07, T-08, T-09 e 2,0 di T-10) — **restano 32,5 gg**
+**Già completati:** 16,0 gg (T-01, T-02, T-04…T-09, T-11, T-12 e 2,0 di T-10) — **restano 30,0 gg**
 
 **Due tranche:**
 
@@ -352,9 +352,12 @@ piattaforma), **UI**, **Test**, **Doc**.
 | **1 — App desktop** | Tutto tranne la sincronizzazione: desktop completo, installabile, con notifiche, tray, autostart, export | T-01…T-16 (T-03 escluso), T-23, T-24, T-27, T-28, T-31, T-32 | **27,5 gg** (24,0 residui) |
 | **2 — Sincronizzazione** | Schema v3, discovery, pairing, replica, UI di stato, collaudo | T-17…T-22, T-25, T-26, T-29, T-30, T-33 | **18,5 gg** |
 
-> **Stato al 2026-08-20:** completati T-01, T-02, T-04, T-05, T-06, T-07, T-08, T-09 e la parte
-> centrale di T-10 (**13,5 gg**). L'app desktop si avvia, apre il database e mostra gli eventi.
-> **Restano 32,5 gg.**
+> **Stato al 2026-08-20:** completati T-01, T-02, T-04…T-09, T-11, T-12 e la parte centrale di
+> T-10 (**16,0 gg**). L'app desktop si avvia, apre il database, mostra gli eventi, programma gli
+> allarmi e notifica — recupero delle scadenze perse incluso. **Restano 30,0 gg.**
+>
+> Non ancora verificate a runtime: le azioni della notifica (posticipa/completa), che richiedono
+> un clic dell'utente; il codice c'è, la prova arriverà con i test desktop di T-28.
 >
 > **Riordino rispetto al piano:** T-06 è stato anticipato prima di T-02 per un vincolo tecnico —
 > Hilt non funziona in un modulo KMP, quindi finché c'era non era possibile spostare i sorgenti
