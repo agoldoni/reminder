@@ -32,7 +32,7 @@ object NotificationHelper {
             putExtra("notificationId", notificationId)
         }
         val dismissPending = PendingIntent.getBroadcast(
-            context, notificationId * 10 + 1, dismissIntent,
+            context, RequestCodes.dismissAction(eventId), dismissIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
@@ -42,10 +42,10 @@ object NotificationHelper {
             putExtra("eventId", eventId)
             putExtra("title", title)
             putExtra("description", description)
-            putExtra("snoozeMinutes", 5)
+            putExtra("snoozeMinutes", RequestCodes.SNOOZE_SHORT_MINUTES)
         }
         val snooze5Pending = PendingIntent.getBroadcast(
-            context, notificationId * 10 + 2, snooze5Intent,
+            context, RequestCodes.snoozeAction(eventId, RequestCodes.SNOOZE_SHORT_MINUTES), snooze5Intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
@@ -55,10 +55,10 @@ object NotificationHelper {
             putExtra("eventId", eventId)
             putExtra("title", title)
             putExtra("description", description)
-            putExtra("snoozeMinutes", 60)
+            putExtra("snoozeMinutes", RequestCodes.SNOOZE_LONG_MINUTES)
         }
         val snooze60Pending = PendingIntent.getBroadcast(
-            context, notificationId * 10 + 3, snooze60Intent,
+            context, RequestCodes.snoozeAction(eventId, RequestCodes.SNOOZE_LONG_MINUTES), snooze60Intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 

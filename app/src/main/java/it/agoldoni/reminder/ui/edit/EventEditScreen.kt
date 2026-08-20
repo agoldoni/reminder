@@ -1,9 +1,5 @@
 package it.agoldoni.reminder.ui.edit
 
-import android.Manifest
-import android.os.Build
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -69,16 +65,6 @@ fun EventEditScreen(
     val dateTimeMillis by viewModel.dateTimeMillis.collectAsState()
     val advanceMinutes by viewModel.advanceMinutes.collectAsState()
     val saved by viewModel.saved.collectAsState()
-
-    val notificationPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { _ -> }
-
-    LaunchedEffect(Unit) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
-    }
 
     LaunchedEffect(saved) {
         if (saved) onBack()

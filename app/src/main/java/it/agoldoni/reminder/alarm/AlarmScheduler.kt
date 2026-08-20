@@ -21,7 +21,7 @@ object AlarmScheduler {
         }
         val pending = PendingIntent.getBroadcast(
             context,
-            event.id.toInt(),
+            RequestCodes.alarm(event.id),
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -36,13 +36,19 @@ object AlarmScheduler {
     fun cancel(context: Context, eventId: Long) {
         val alarmManager = context.getSystemService(AlarmManager::class.java)
         val intent = Intent(context, AlarmReceiver::class.java)
-        val pending = PendingIntent.getBroadcast(
-            context,
-            eventId.toInt(),
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        alarmManager.cancel(pending)
+        // Allarme principale e snooze pendenti, inclusi i codici precedenti agli slot:
+        // senza gli snooze, completare o eliminare un evento rinviato lo lasciava scattare
+        RequestCodes.allAlarms(eventId).forEach { requestCode ->
+            PendingIntent.getBroadcast(
+                context,
+                requestCode,
+                intent,
+                PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+            )?.let { pending ->
+                alarmManager.cancel(pending)
+                pending.cancel()
+            }
+        }
     }
 
     fun scheduleSnooze(context: Context, eventId: Long, title: String, description: String?, snoozeMinutes: Int) {
@@ -53,7 +59,7 @@ object AlarmScheduler {
             putExtra("title", title)
             putExtra("description", description)
         }
-        val requestCode = eventId.toInt() + snoozeMinutes * 10_000
+        val requestCode = RequestCodes.snooze(eventId, snoozeMinutes)
         val pending = PendingIntent.getBroadcast(
             context,
             requestCode,
