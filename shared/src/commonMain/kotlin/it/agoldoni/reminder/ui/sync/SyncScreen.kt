@@ -158,7 +158,14 @@ fun SyncScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp)
         ) {
-            item { StatoRiepilogo(status.listeningPort, status.lastSyncAt, status.lastMessage) }
+            item {
+                StatoRiepilogo(
+                    host = status.listeningHost,
+                    porta = status.listeningPort,
+                    ultimoSync = status.lastSyncAt,
+                    messaggio = status.lastMessage
+                )
+            }
 
             item { Intestazione("Dispositivi associati") }
             if (paired.isEmpty()) {
@@ -288,17 +295,32 @@ private fun InserimentoManualeDialog(
 }
 
 @Composable
-private fun StatoRiepilogo(porta: Int?, ultimoSync: Long?, messaggio: String?) {
+private fun StatoRiepilogo(host: String?, porta: Int?, ultimoSync: Long?, messaggio: String?) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            Text(
-                if (porta != null) "In ascolto sulla porta $porta"
-                else "Questo dispositivo non è in ascolto: è lui a contattare l'altro.",
-                style = MaterialTheme.typography.bodyMedium
-            )
+            if (porta != null) {
+                Text(
+                    if (host != null) "Raggiungibile su $host:$porta" else "In ascolto sulla porta $porta",
+                    style = MaterialTheme.typography.titleSmall
+                )
+                // È l'unico posto in cui l'utente può leggere il proprio indirizzo: il modulo di
+                // inserimento manuale chiede quello dell'**altro** dispositivo, e senza questa
+                // riga bisognerebbe andarlo a cercare nelle impostazioni di sistema.
+                Text(
+                    "Se i due dispositivi non si trovano da soli, digita questo indirizzo " +
+                        "sull'altro.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Text(
+                    "Questo dispositivo non è in ascolto: è lui a contattare l'altro.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
             Text(
                 ultimoSync?.let { "Ultima sincronizzazione: ${formatDateTime(it)}" }
                     ?: "Mai sincronizzato.",

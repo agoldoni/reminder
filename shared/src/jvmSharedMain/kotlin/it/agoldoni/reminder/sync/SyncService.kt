@@ -91,7 +91,7 @@ class SyncService(
             !listensInBackground -> {
                 server?.stop()
                 server = null
-                _status.value = _status.value.copy(listeningPort = null)
+                _status.value = _status.value.copy(listeningPort = null, listeningHost = null)
                 directory.start(null)
             }
         }
@@ -115,7 +115,10 @@ class SyncService(
             runCatching { istanza.start(port) }
                 .onSuccess { porta ->
                     portaEffettiva = porta
-                    _status.value = _status.value.copy(listeningPort = porta)
+                    _status.value = _status.value.copy(
+                        listeningPort = porta,
+                        listeningHost = runCatching { siteAddress().hostAddress }.getOrNull()
+                    )
                 }
                 .onFailure { errore ->
                     server = null
@@ -139,7 +142,7 @@ class SyncService(
         directory.stop()
         server?.stop()
         server = null
-        _status.value = _status.value.copy(listeningPort = null)
+        _status.value = _status.value.copy(listeningPort = null, listeningHost = null)
     }
 
     override fun enable() {

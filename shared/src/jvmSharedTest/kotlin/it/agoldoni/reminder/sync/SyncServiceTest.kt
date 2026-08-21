@@ -106,6 +106,35 @@ class SyncServiceTest {
         assertNotNull(servizio.status.value.listeningPort)
     }
 
+    /**
+     * L'indirizzo è l'informazione che manca a chi deve digitarlo sull'altro dispositivo: il
+     * modulo di inserimento manuale chiede quello del **peer**, non il proprio.
+     */
+    @Test
+    fun `chi ascolta mostra anche l'indirizzo a cui è raggiungibile`() {
+        val servizio = servizio()
+
+        servizio.enable()
+
+        val stato = servizio.status.value
+        assertNotNull(stato.listeningPort)
+        val host = assertNotNull(stato.listeningHost, "senza indirizzo la porta da sola non basta")
+        assertTrue(host.count { it == '.' } == 3, "un indirizzo IPv4 digitabile: $host")
+
+        servizio.disable()
+
+        assertNull(servizio.status.value.listeningHost, "spento non è raggiungibile da nessuna parte")
+    }
+
+    @Test
+    fun `chi non ascolta non mostra nessun indirizzo`() {
+        val servizio = servizio(listensInBackground = false)
+
+        servizio.enable()
+
+        assertNull(servizio.status.value.listeningHost)
+    }
+
     @Test
     fun `accendere avvia ascolto e annuncio, spegnere li chiude`() {
         val servizio = servizio()

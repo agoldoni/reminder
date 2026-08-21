@@ -7,6 +7,12 @@ data class SyncStatus(
     val enabled: Boolean = false,
     /** Porta su cui questo dispositivo è raggiungibile, se sta ascoltando. */
     val listeningPort: Int? = null,
+    /**
+     * Indirizzo con cui questo dispositivo è raggiungibile sulla rete locale. Va mostrato accanto
+     * alla porta: quando la ricerca automatica non passa, è il valore che l'utente deve digitare
+     * **sull'altro dispositivo**, e senza non avrebbe modo di conoscerlo.
+     */
+    val listeningHost: String? = null,
     val syncing: Boolean = false,
     /** Ultima sincronizzazione riuscita, in tempo locale. */
     val lastSyncAt: Long? = null,
