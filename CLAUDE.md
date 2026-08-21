@@ -15,18 +15,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Release signing requires env vars: `KEYSTORE_FILE` (default `~/.android/release-key.jks`), `KEYSTORE_PASSWORD`, `KEY_ALIAS` (default `release`), `KEY_PASSWORD` (defaults to `KEYSTORE_PASSWORD` when unset).
 
-Tests live in `shared/src/jvmSharedTest` (ODS export, date helpers), `shared/src/desktopTest`
-(scheduler desktop, migrazione 2→3), `desktopApp/src/test` (autostart, single instance) e
+Tests live in `shared/src/jvmSharedTest` (ODS export, date helpers, web app), `shared/src/desktopTest`
+(scheduler desktop, migrazione 2→3), `desktopApp/src/test` (autostart, single instance, porte) e
 `shared/src/androidInstrumentedTest` (riprogrammazione al boot, richiede emulatore).
 
 ## Prova della UI desktop in una sessione X separata
 
 ```bash
 tools/sessione-x.sh avvia [--dati-reali]   # Xephyr + metacity + AppImage su :2
+tools/sessione-x.sh browser URL            # un browser sull'URL, nel display separato
 tools/sessione-x.sh pilota                 # comandi di Pilota.java da stdin
 tools/sessione-x.sh scatto [file]          # screenshot del display separato
 tools/sessione-x.sh chiudi
 ```
+
+`browser` serve a guardare la web app locale (`web/`) servita dal telefono: profilo nuovo sotto
+`build/`, così il browser dell'utente non si trova una sessione in più aperta. Con l'emulatore,
+l'indirizzo da passare è quello di `adb forward tcp:9888 tcp:9888`, cioè `127.0.0.1`.
 
 Serve a guidare l'app senza rubare mouse, fuoco e appunti alla sessione dell'utente. `Xephyr` è
 un server X vero — display, albero di finestre e puntatore propri — ma annidato in una finestra
@@ -83,6 +88,17 @@ target JVM, dove `java.*` è disponibile — `OdsExporter` e le date stanno qui)
   Associazione e canale cifrato: le parti crittografiche stanno in `jvmSharedMain` (`javax.crypto` c'è su entrambi i target: niente `expect`/`actual`). Curva **P-256** e non X25519, che su Android arriva solo con l'API 31 mentre il minimo qui è 26. HKDF-SHA256 è scritto a mano (non c'è in JCA) e verificato contro i vettori della RFC 5869. L'associazione usa il **confronto a vista**: entrambi i lati derivano dallo scambio lo stesso codice a sei cifre e l'utente conferma di vederlo uguale sui due schermi — un codice digitato da un lato solo sarebbe forzabile offline da chi si mette in mezzo. `SecureChannel` è AES-256-GCM con **una chiave per direzione** (due contatori sulla stessa chiave produrrebbero nonce ripetuti, che in GCM azzerano ogni garanzia) e il numero di sequenza come dato autenticato, così un frame ripetuto o spostato non si decifra. Il `sharedSecret` sta in chiaro nella tabella `peers`: è protetto dai permessi del file, non da una cifratura a riposo.
   Scoperta dei dispositivi sulla rete locale: il contratto (`Discovery`, `DiscoveredPeer`, `DiscoveryStatus`, `Advertisement`) sta in `commonMain` con il tipo di servizio `_promemoria-sync._tcp`; l'attributo TXT `deviceId` porta l'identità. `NsdDiscovery` (Android) tiene un **multicast lock** — senza `CHANGE_WIFI_MULTICAST_STATE` il Wi-Fi scarta gli annunci — e serializza le `resolveService`, che `NsdManager` accetta una alla volta. `JmdnsDiscovery` (desktop) passa a jmdns un indirizzo esplicito da `siteAddress()`: `InetAddress.getLocalHost()` su Linux risolve spesso in `127.0.1.1` e l'annuncio non uscirebbe. Il tipo di servizio va scritto `_promemoria-sync._tcp` per `NsdManager` e `_promemoria-sync._tcp.local.` per jmdns. `PeerDirectory` (commonMain) unisce i peer trovati a quelli inseriti a mano quando mDNS non passa: è una sorgente in più della stessa lista, non una modalità separata.
 - **`export/`** — Reminder export to ODS file. `Exporter` restituisce un `ByteArray` (il contratto vive in `commonMain`); la consegna passa da `ExportTarget`: share intent su Android, dialog di salvataggio nativo su desktop. `OdsExporter` writes a minimal ODF 1.2 spreadsheet (ZIP with `mimetype` STORED + `META-INF/manifest.xml` + `content.xml`) by hand — no third-party ODS library, since SODS pulls in `javax.xml.stream` (StAX) which is unavailable on Android. `ExportEventsUseCase` reads events from DAO based on `ExportFilter` (`ALL` / `OPEN_ONLY`), writes the file in `cacheDir/exports/`, and returns a `content://` Uri exposed via `FileProvider` (authority `${applicationId}.fileprovider`, paths in `res/xml/file_paths.xml`). `ShareHelper` builds the `ACTION_SEND` chooser. The `Exporter` interface allows future formats (CSV/XLSX) without rewriting callers.
+- **`web/`** — porta HTTP attivabile che espone ai browser della rete locale la vista principale, **in sola lettura**. Solo Android la cabla; il codice sta in `jvmSharedMain` (è `java.net` puro) con l'interfaccia `WebServerController` in `commonMain`, per la stessa ragione di `SyncController`. `AppContainer.web` ha un default **inerte** (`WebServerNonDisponibile`) così il desktop non deve conoscerla.
+  **Porta `WEB_PORT` = 9888.** È la terza porta fissa dell'app e non può coincidere con `SYNC_PORT` (47700) né con `SingleInstance.DEFAULT_PORT` (47653): sul telefono i due server possono ascoltare insieme. `PorteWebTest` e `PorteTest` sono il presidio.
+  **Vive quanto il processo, non quanto una schermata.** `WebService` è costruito in `ReminderApp.onCreate()`; `MainActivity` gli manda solo `onForeground()`/`onBackground()`. Legarlo all'Activity vorrebbe dire rigenerare il token a ogni **rotazione dello schermo** — che è un giro completo di `onStop`/`onStart` — invalidando l'indirizzo appena digitato sull'altro dispositivo. Il background chiude il socket ma **conserva** il token; solo `disable()` lo invalida.
+  **Gli asset stanno in `shared/src/webAssets/`**, dichiarata a mano a **entrambi** i target in `shared/build.gradle.kts`. Le `resources/` di `jvmSharedMain` non vengono raccolte da AGP — verificato con `:shared:sourceSets` — quindi finirebbero nel jar desktop ma non nell'APK, e il guasto sarebbe una pagina bianca a runtime. Si leggono dal classloader, che sull'APK funziona.
+  **Il token** è di 8 caratteri da un alfabeto senza `i`, `l`, `o`, `1` (32 simboli esatti: cinque bit a carattere senza polarizzazione), viaggia nella query, si rigenera a ogni accensione e regge grazie alla **coppia** token corto + soglia di 10 tentativi al minuto per indirizzo: alzare la soglia senza allungare il token romperebbe l'equilibrio. Ogni risposta porta `Referrer-Policy: no-referrer`, senza il quale il token uscirebbe nell'header `Referer`. `NEGATO` e `BLOCCATO` producono **la stessa** risposta sul filo. Il token protegge `/` e `/api/eventi`; CSS, JS, manifest e icone no, perché il browser li chiede fuori dal contesto della pagina — il prezzo, accettato, è che una richiesta senza token a `/app.css` rivela che il servizio è acceso.
+  **Gli asset si servono da un elenco chiuso** (`StaticAssets.AMMESSI`): un percorso che non è una chiave di quella mappa non esiste, quindi la risalita non è respinta ma impossibile. Il controllo sui `..` nel parser è una seconda rete, e la decodifica percentuale avviene **una volta sola** (due volte farebbero passare `%252e%252e%2f`).
+  **Un difetto del gestore va catturato dentro `client.use`**, non fuori: lasciandolo uscire, il socket è già chiuso e il `500` non parte più. È già successo, e il test lo presidia.
+  **L'aggiornamento è condizionale**: `/api/eventi` porta un `ETag` e a `If-None-Match` uguale risponde `304`, così la pagina non si ridisegna e non perde la posizione di scorrimento. L'impronta si calcola sul **corpo**, non su `max(updatedAt)`: completare un promemoria lo toglie dagli aperti e quel massimo può *scendere*. `Cache-Control: no-store` non è in contraddizione — l'impronta la tiene il JavaScript in una variabile, non la cache HTTP.
+  **Le date le formatta il browser** (fuso del client), mentre `notificationMillis` lo calcola il server perché la formula non venga riscritta in JavaScript. La conseguenza voluta: la fascia cromatica si aggiorna al passare dell'ora **senza** una richiesta di rete.
+  **Non è una PWA installabile sulla rete locale**, e la ragione non è il service worker: Chrome non lo pretende più per l'installazione. È il **secure context** a mancare su `http://192.168.x.y`. Su `127.0.0.1` — per esempio via `adb forward` — il contesto è sicuro e Chrome offre «Installa»: la conferma che manifest e icone sono validi, non che funzioni in rete.
+
 
 **Desktop specifics:**
 - Allarmi: una coroutine in attesa per evento; `DesktopAlarmScheduler.bootstrap()` riprogramma i futuri e notifica gli scaduti all'avvio.

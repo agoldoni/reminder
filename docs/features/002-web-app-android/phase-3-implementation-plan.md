@@ -77,9 +77,11 @@ successiva. Stima: **11,00 giorni/uomo**, intervallo realistico 10–13.
   mostrare la vista principale»). Non è un traguardo ma un primo passo (D-07), e il codice viene
   strutturato di conseguenza.
 - **Vista «Fatti», editor, sincronizzazione dal web** — una vista sola, fatta bene.
-- **Service worker, offline, installazione PWA piena** — impossibili: i service worker si
-  registrano solo in un *secure context*, e `http://192.168.x.y` non lo è.
-- **HTTPS / certificati** — un autofirmato dà comunque avvisi e non sblocca il service worker.
+- **Service worker, offline, installazione PWA piena** — impossibili: dipendono dal *secure
+  context*, e `http://192.168.x.y` non lo è. (Verificato in realizzazione: non è il service worker
+  mancante a impedire l'installazione — Chrome non lo richiede più — ma il contesto non sicuro.)
+- **HTTPS / certificati** — un autofirmato dà comunque avvisi, e un certificato non fidato non
+  rende sicuro il contesto.
 - **Accesso da fuori la rete locale** — cambierebbe il modello di minaccia.
 - **Foreground service / raggiungibilità ad app chiusa** — decisione presa: batteria e notifica
   permanente non giustificate per una consultazione occasionale.

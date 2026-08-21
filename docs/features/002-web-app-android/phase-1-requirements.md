@@ -47,10 +47,13 @@ albergo mette sullo stesso segmento decine di dispositivi altrui. Vale qui la st
 già fatta per `sync_enabled`: **spento di default**, si accende con un atto esplicito
 dell'utente e si spegne da sé quando l'app lascia il primo piano.
 
-**Perché «progressive» oggi vale meno di quanto sembri:** un service worker si registra solo
-in un *secure context* (HTTPS, oppure `localhost`). Una pagina servita su `http://192.168.x.y`
-non lo è, quindi il service worker non parte, la cache offline non esiste e Chrome non offre
-l'installazione vera. Ciò che resta di realizzabile — e che copre l'obiettivo dichiarato «per
+**Perché «progressive» oggi vale meno di quanto sembri:** tutto ciò che rende «progressive» una
+web app è dietro al *secure context* (HTTPS, oppure `localhost`), e una pagina servita su
+`http://192.168.x.y` non lo è. Il service worker non si registra, quindi niente cache offline; e
+non c'è nemmeno l'installazione, benché — verificato in fase di realizzazione — Chrome **non
+pretenda più un service worker** per offrirla: a mancare è il contesto sicuro, non il service
+worker. La conferma è che sullo stesso servizio raggiunto via `127.0.0.1`, che secure context lo è,
+Chrome offre «Installa». Ciò che resta di realizzabile — e che copre l'obiettivo dichiarato «per
 ora deve solo mostrare la vista principale» — è una **web app responsive con `manifest.json`
 e icone**, aggiungibile alla schermata Home come scorciatoia. Questa feature consegna quella;
 la PWA piena resta annotata come passo successivo in §8.
@@ -141,7 +144,7 @@ la PWA piena resta annotata come passo successivo in §8.
 | **Qualsiasi scrittura dal browser** (creare, modificare, completare, eliminare) | L'utente ha chiesto esplicitamente «per ora deve solo mostrare la vista principale». La sola lettura riduce di molto la superficie d'attacco di una porta esposta in rete |
 | Vista «Fatti», editor, schermata di sincronizzazione | Stessa ragione: una vista sola, fatta bene |
 | **Service worker, cache offline, installazione PWA piena** | Impossibili su HTTP in rete locale (secure context). Vedi §5 R1 |
-| **HTTPS / certificati** | Un autofirmato dà avvisi del browser e non basta comunque a sbloccare il service worker su Chrome |
+| **HTTPS / certificati** | Un autofirmato dà avvisi del browser e Chrome non tratta come sicuro un contesto con certificato non fidato: non sbloccherebbe né service worker né installazione |
 | Accesso da fuori la rete locale (port forwarding, UPnP, relay, tunnel) | Cambierebbe completamente il modello di minaccia |
 | **Foreground service / raggiungibilità ad app chiusa** | Decisione presa: costo in batteria e notifica permanente non giustificati per una consultazione occasionale |
 | Attivazione su desktop | La richiesta riguarda le versioni Android. Il codice resta riusabile, ma nessun interruttore né UI desktop |
@@ -260,8 +263,9 @@ la PWA piena resta annotata come passo successivo in §8.
 ### Rischi tecnici
 
 **R1 — «Progressive» non è ottenibile su HTTP in rete locale** · *Certezza, non rischio*
-I service worker richiedono un secure context; `http://192.168.x.y` non lo è. Niente cache
-offline, niente prompt di installazione su Chrome. *Mitigazione:* scelta già presa — si
+Il secure context manca su `http://192.168.x.y`: niente cache offline e niente prompt di
+installazione. *Precisazione emersa in realizzazione:* non è il service worker mancante a
+impedire l'installazione — Chrome non lo richiede più — ma proprio il contesto non sicuro. *Mitigazione:* scelta già presa — si
 consegna una web app responsive con manifest, e il documento lo dichiara apertamente invece di
 promettere una PWA che non può funzionare. Il nome della feature non deve indurre ad aspettarsi
 il funzionamento offline.
