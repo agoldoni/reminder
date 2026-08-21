@@ -4,6 +4,7 @@
 # senza toccare la sessione grafica dell'utente.
 #
 #   tools/sessione-x.sh avvia [--dati-reali]   apre server X, window manager e app
+#   tools/sessione-x.sh browser URL            apre un browser sull'URL nel display separato
 #   tools/sessione-x.sh pilota                 esegue da stdin i comandi di Pilota.java
 #   tools/sessione-x.sh scatto FILE            screenshot del display separato
 #   tools/sessione-x.sh chiudi                 spegne tutto
@@ -46,6 +47,30 @@ sposta_su_workspace_vscode() {
         done
         sleep 1
     done
+}
+
+# Server X e window manager, senza nulla dentro: li condividono `avvia` e `browser`.
+avvia_server_x() {
+    command -v Xephyr >/dev/null || { echo "Serve Xephyr (pacchetto xserver-xephyr)."; return 1; }
+    if [ -e "/tmp/.X11-unix/X${DISP#:}" ]; then
+        echo "Display $DISP già attivo: ci si aggiunge dentro."
+        return 0
+    fi
+    mkdir -p "$LAVORO"
+    Xephyr "$DISP" -screen "$GEOM" -resizeable -ac -br \
+        -title "Xephyr $DISP — sessione separata Promemoria" \
+        >"$LAVORO/xephyr.log" 2>&1 &
+    echo $! > "$LAVORO/xephyr.pid"
+    attesa_socket || { echo "Xephyr non è partito; vedi $LAVORO/xephyr.log"; return 1; }
+    echo "Server X separato su $DISP"
+
+    # Senza window manager la finestra resta senza decorazioni e non si può spostare.
+    if command -v metacity >/dev/null; then
+        DISPLAY="$DISP" metacity >"$LAVORO/wm.log" 2>&1 &
+        echo $! > "$LAVORO/wm.pid"
+        sleep 1
+    fi
+    sposta_su_workspace_vscode
 }
 
 case "${1:-avvia}" in
@@ -97,6 +122,34 @@ avvia)
     echo "Il messaggio «Cannot create Linux GL context» nel log è atteso: in Xephyr Skiko"
     echo "ripiega sul rendering software."
     ;;
+browser)
+    # Serve a guardare la web app locale servita dal telefono senza rubare finestra, fuoco e
+    # appunti alla sessione dell'utente. Il profilo è nuovo e sta sotto build/: quello reale non
+    # va toccato, altrimenti il browser dell'utente si troverebbe una sessione in più aperta.
+    url=${2:-}
+    [ -z "$url" ] && { echo "uso: $0 browser URL"; exit 1; }
+    browser=$(command -v chromium || command -v chromium-browser || command -v google-chrome \
+        || command -v firefox) \
+        || { echo "Nessun browser trovato (chromium, google-chrome, firefox)."; exit 1; }
+    avvia_server_x || exit 1
+
+    profilo="$LAVORO/profilo-browser"
+    mkdir -p "$profilo"
+    case "$(basename "$browser")" in
+    firefox)
+        DISPLAY="$DISP" "$browser" --profile "$profilo" --no-remote --new-window "$url" \
+            >"$LAVORO/browser.log" 2>&1 &
+        ;;
+    *)
+        DISPLAY="$DISP" "$browser" --user-data-dir="$profilo" \
+            --no-first-run --no-default-browser-check --disable-sync \
+            --window-size="${GEOM%x*},${GEOM#*x}" --window-position=0,0 \
+            "$url" >"$LAVORO/browser.log" 2>&1 &
+        ;;
+    esac
+    echo $! > "$LAVORO/browser.pid"
+    echo "$(basename "$browser") avviato su $DISP → $url"
+    ;;
 pilota)
     DISPLAY="$DISP" java "$RADICE/tools/Pilota.java"
     ;;
@@ -106,12 +159,12 @@ scatto)
     echo "$file"
     ;;
 chiudi)
-    for f in app wm xephyr; do
+    for f in app browser wm xephyr; do
         [ -f "$LAVORO/$f.pid" ] && kill "$(cat "$LAVORO/$f.pid")" 2>/dev/null
         rm -f "$LAVORO/$f.pid"
     done
     echo "Sessione $DISP chiusa."
     ;;
 *)
-    echo "uso: $0 {avvia [--dati-reali]|pilota|scatto [file]|chiudi}"; exit 1 ;;
+    echo "uso: $0 {avvia [--dati-reali]|browser URL|pilota|scatto [file]|chiudi}"; exit 1 ;;
 esac
