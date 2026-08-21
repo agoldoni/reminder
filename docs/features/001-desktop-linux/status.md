@@ -1,7 +1,7 @@
 # Stato del lavoro — port desktop Linux
 
 **Aggiornato:** 2026-08-21
-**Branch:** `feature/desktop-linux` (14 commit, non ancora unito in `main`)
+**Branch:** `feature/desktop-linux` (15 commit, non ancora unito in `main`)
 
 ---
 
@@ -29,16 +29,18 @@ Compose Multiplatform, ed è distribuibile come AppImage.
 | Associazione e canale cifrato (T-19) | ✅ fatto, schema v4 con la tabella `peers` |
 | Motore di replica (T-20) | ✅ fatto, convergenza verificata anche su due database veri |
 | Integrazione (T-21) | ✅ fatto, tutto collegato all'app e verificato all'avvio su entrambe |
-| UI di associazione e stato (T-22) | ⏳ da fare — è l'ultimo pezzo prima dei collaudi |
+| UI di associazione e stato (T-22) | ✅ fatto, verificata a runtime su emulatore |
 
-**Avanzamento:** 37,7 gg completati su 46,0 stimati. Restano **8,3 gg**.
+**Tutte le funzionalità del piano sono implementate.** Restano i collaudi e la documentazione.
 
-**94 test automatici** (prima non ce n'erano): export ODS, formattazione date, scheduler desktop,
+**Avanzamento:** 39,7 gg completati su 46,0 stimati. Restano **6,3 gg**.
+
+**103 test automatici** (prima non ce n'erano): export ODS, formattazione date, scheduler desktop,
 autostart, istanza singola, migrazioni di schema, elenco dei dispositivi, round-trip mDNS reale,
 primitive crittografiche, associazione e sessione cifrata, regola di merge, convergenza fra due
-dispositivi, scambio completo su due database Room veri, giro su socket in ascolto e
-orchestrazione col flag spento; strumentati su emulatore la riprogrammazione al boot e il
-cablaggio di `NsdDiscovery`.
+dispositivi, scambio completo su due database Room veri, giro su socket in ascolto,
+orchestrazione col flag spento e ViewModel della schermata; strumentati su emulatore la
+riprogrammazione al boot e il cablaggio di `NsdDiscovery`.
 
 ## Come si lavora
 
@@ -164,12 +166,36 @@ il danno si limita a una modifica concorrente allo stesso evento.
   servizio **nega**. Accettare senza che nessuno abbia guardato il codice vanificherebbe il
   confronto a vista.
 
+## La schermata di sincronizzazione
+
+Si raggiunge dall'icona nella barra della lista. Mostra stato e ultimo allineamento, i dispositivi
+associati (con dissociazione) e quelli trovati sulla rete (con «Associa»), ha «sincronizza ora» e
+l'inserimento manuale di host e porta con la porta già compilata.
+
+Due cose non ovvie, entrambe emerse provandola davvero:
+
+1. **Aprire la schermata accende ricerca e ascolto anche a interruttore spento.** La prima
+   versione rispettava il flag e il risultato era un vicolo cieco: per associare il primo
+   dispositivo bisogna trovarlo, per trovarlo serve la ricerca accesa, e per accenderla serviva
+   un'associazione. Aprire quella schermata **è** l'atto esplicito dell'utente; chiuderla
+   rispegne tutto se nessuna associazione è stata completata.
+2. **Finché è aperta è l'unico posto in cui si può mostrare il codice di un'associazione in
+   arrivo.** Fuori da qui quelle associazioni vengono **negate**: accettarle mentre nessuno
+   guarda il codice vanificherebbe il confronto a vista.
+
+Il dialogo del codice chiede «vedi questo stesso numero sull'altro dispositivo?» e non offre un
+campo in cui digitarlo — è la conseguenza diretta della scelta crittografica di T-19.
+
 ## Prossimo passo
 
-**T-22 — UI di associazione e stato**: elenco dei dispositivi trovati, schermata che mostra il
-codice a sei cifre da confrontare (**non** un campo in cui digitarlo, vedi T-19), stato
-dell'ultimo allineamento, «sincronizza ora», dissociazione e inserimento manuale di host e porta.
-È l'ultimo pezzo di funzionalità; poi restano i collaudi T-25, T-29, T-30 e la documentazione.
+Le funzionalità ci sono tutte. Restano:
+
+- **T-29** (1,5 gg) — test di integrazione: due istanze desktop che si scoprono, si associano e
+  convergono. È il primo che eserciterà mDNS e trasporto insieme.
+- **T-25** (2,5 gg) — resta poco: merge, tombstone, idempotenza, protocollo e associazione sono
+  già coperti dai test scritti lungo la strada. Va rivisto quanto ne rimanga davvero.
+- **T-30** (1,0 gg) — collaudo telefono ↔ desktop su rete reale, inclusi offline e conflitto.
+- **T-32/T-33** (1,3 gg) — requisiti di rete, guida al pairing e note di distribuzione.
 
 Il dettaglio task per task è in [phase-3-implementation-plan.md](phase-3-implementation-plan.md).
 

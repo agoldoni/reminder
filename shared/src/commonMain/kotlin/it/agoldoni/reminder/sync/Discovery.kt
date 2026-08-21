@@ -8,6 +8,13 @@ import kotlinx.coroutines.flow.StateFlow
  */
 const val SYNC_SERVICE_TYPE = "_promemoria-sync._tcp"
 
+/**
+ * Porta su cui si mette in ascolto chi può farlo. Fissa, così chi deve digitarla a mano quando la
+ * ricerca automatica non passa ha un valore da digitare. Sta qui e non nel trasporto perché la
+ * schermata di inserimento manuale, che vive in `commonMain`, la propone come predefinita.
+ */
+const val SYNC_PORT = 47653
+
 /** Attributo TXT con cui ogni annuncio porta la propria identità. */
 const val TXT_DEVICE_ID = "deviceId"
 

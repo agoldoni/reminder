@@ -54,11 +54,12 @@ class SyncServiceTest {
     }
 
     /**
-     * Il criterio del piano: finché l'interruttore è spento non si apre un socket né parte un
-     * annuncio. È ciò che permette di spegnere la sincronizzazione senza reinstallare nulla.
+     * Il criterio del piano: finché l'interruttore è spento l'avvio automatico non apre un socket
+     * né manda un annuncio. È ciò che permette di spegnere la sincronizzazione senza reinstallare
+     * nulla.
      */
     @Test
-    fun `con la sincronizzazione spenta non si apre niente`() {
+    fun `con la sincronizzazione spenta l'avvio automatico non apre niente`() {
         val servizio = servizio()
 
         servizio.start()
@@ -66,6 +67,43 @@ class SyncServiceTest {
         assertNull(servizio.status.value.listeningPort, "nessun socket in ascolto")
         assertFalse(discovery.running, "nessun annuncio sulla rete")
         assertFalse(servizio.status.value.enabled)
+    }
+
+    /**
+     * Senza questo non ci sarebbe modo di cominciare: per associare il primo dispositivo bisogna
+     * trovarlo, e per trovarlo serve la ricerca accesa — che a interruttore spento non partirebbe.
+     * Aprire la schermata è l'atto esplicito che la accende.
+     */
+    @Test
+    fun `aprire la schermata accende la ricerca anche a interruttore spento`() {
+        val servizio = servizio()
+
+        servizio.beginInteractive()
+
+        assertTrue(discovery.running, "si cerca")
+        assertNotNull(servizio.status.value.listeningPort, "e si ascolta, per l'associazione")
+    }
+
+    @Test
+    fun `chiudere la schermata rispegne tutto se non si è associato nulla`() {
+        val servizio = servizio()
+        servizio.beginInteractive()
+
+        servizio.endInteractive()
+
+        assertFalse(discovery.running)
+        assertNull(servizio.status.value.listeningPort)
+    }
+
+    @Test
+    fun `chiudere la schermata non spegne chi ha già un'associazione`() {
+        val servizio = servizio(settings = FakeSettings(iniziale = true))
+        servizio.beginInteractive()
+
+        servizio.endInteractive()
+
+        assertTrue(discovery.running, "chi è associato resta raggiungibile a schermata chiusa")
+        assertNotNull(servizio.status.value.listeningPort)
     }
 
     @Test

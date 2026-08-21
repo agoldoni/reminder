@@ -52,6 +52,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import it.agoldoni.reminder.platform.LocalAppContainer
 import it.agoldoni.reminder.platform.formatDateTime
 import it.agoldoni.reminder.platform.nowMillis
+import it.agoldoni.reminder.ui.icons.SyncIcon
 import it.agoldoni.reminder.platform.startOfToday
 import it.agoldoni.reminder.data.EventEntity
 import it.agoldoni.reminder.export.ExportFilter
@@ -62,6 +63,7 @@ fun EventListScreen(
     onAddEvent: () -> Unit,
     onEditEvent: (Long) -> Unit,
     onNavigateToCompleted: () -> Unit,
+    onNavigateToSync: () -> Unit,
     viewModel: EventListViewModel = viewModel(factory = LocalAppContainer.current.viewModelFactory)
 ) {
     val events by viewModel.events.collectAsState()
@@ -185,6 +187,9 @@ fun EventListScreen(
                     }
                     IconButton(onClick = onNavigateToCompleted) {
                         Icon(Icons.Default.CheckCircle, contentDescription = "Fatti")
+                    }
+                    IconButton(onClick = onNavigateToSync) {
+                        Icon(SyncIcon, contentDescription = "Sincronizzazione")
                     }
                     IconButton(onClick = { showInfoDialog = true }) {
                         Icon(Icons.Default.Info, contentDescription = "Info")

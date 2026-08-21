@@ -61,8 +61,26 @@ class SyncService(
     @Volatile
     private var incomingApproval: PairingApprovalRequest? = null
 
+    /** Vero mentre la schermata di sincronizzazione è aperta. */
+    @Volatile
+    private var interattivo = false
+
     override fun start() {
-        if (!settings.syncEnabled.value) return
+        if (settings.syncEnabled.value) avvia()
+    }
+
+    override fun beginInteractive() {
+        interattivo = true
+        avvia()
+    }
+
+    override fun endInteractive() {
+        interattivo = false
+        // Chi non ha ancora associato nulla non deve restare in ascolto a schermata chiusa.
+        if (!settings.syncEnabled.value) stop()
+    }
+
+    private fun avvia() {
         var portaEffettiva: Int? = null
         if (listens && server == null) {
             val istanza = SyncServer(
@@ -109,7 +127,7 @@ class SyncService(
 
     override fun enable() {
         settings.setSyncEnabled(true)
-        start()
+        avvia()
     }
 
     override fun disable() {
@@ -201,8 +219,7 @@ class SyncService(
         }
     }
 
-    /** Da chiamare mentre una schermata è pronta a mostrare il codice di un'associazione in arrivo. */
-    fun acceptIncomingPairing(approval: PairingApprovalRequest?) {
+    override fun onIncomingPairing(approval: PairingApprovalRequest?) {
         incomingApproval = approval
     }
 

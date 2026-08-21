@@ -12,9 +12,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
-/** Porta su cui si mette in ascolto chi può farlo. Fissa, così il fallback manuale è indovinabile. */
-const val SYNC_PORT = 47653
-
 private const val CONNECT_TIMEOUT_MILLIS = 5_000
 private const val READ_TIMEOUT_MILLIS = 30_000
 

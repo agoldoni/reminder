@@ -32,12 +32,24 @@ interface SyncController {
     val paired: StateFlow<List<PairedPeer>>
 
     /**
-     * Accende annunci, ascolto e ricerca. Senza il consenso esplicito dell'utente non fa nulla:
-     * finché la sincronizzazione è spenta non si apre un socket né parte un annuncio.
+     * Avvio automatico all'apertura dell'app: **rispetta l'interruttore**. Finché la
+     * sincronizzazione è spenta non apre un socket né manda un annuncio.
      */
     fun start()
 
     fun stop()
+
+    /**
+     * Ricerca e ascolto mentre la schermata di sincronizzazione è aperta. Vale **anche a
+     * interruttore spento**, perché aprire quella schermata è già un atto esplicito dell'utente —
+     * e senza questo non ci sarebbe modo di trovare il primo dispositivo da associare.
+     *
+     * Non accende l'interruttore: a schermata chiusa, se nessuna associazione è stata completata,
+     * torna tutto spento.
+     */
+    fun beginInteractive()
+
+    fun endInteractive()
 
     /** Accende l'interruttore e avvia; è ciò che fa la schermata di associazione. */
     fun enable()
@@ -60,6 +72,14 @@ interface SyncController {
 
     /** Aggiunge un indirizzo digitato quando la ricerca automatica non passa. */
     fun addManualPeer(host: String, port: Int): Result<DiscoveredPeer>
+
+    /**
+     * Registra chi mostrerà il codice di un'associazione **avviata dall'altro dispositivo**, e
+     * `null` quando non c'è nessuno che possa mostrarlo. Senza qualcuno registrato l'associazione
+     * in arrivo viene negata: accettarla mentre nessuno guarda il codice vanificherebbe il
+     * confronto a vista, che è l'unica cosa che protegge dall'uomo nel mezzo.
+     */
+    fun onIncomingPairing(approval: PairingApprovalRequest?)
 }
 
 /** Un dispositivo associato, nella forma che serve alla schermata di stato. */

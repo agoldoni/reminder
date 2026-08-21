@@ -149,9 +149,9 @@ riaprire a ogni riavvio.
 Come utente voglio che telefono e PC si trovino da soli sulla stessa rete per non dover
 configurare indirizzi IP o porte.
 
-- [~] Con entrambe le app attive sulla stessa rete, ciascuna elenca l'altra entro 30 s. *(meccanismo pronto e verificato desktop↔desktop in ~4 s; telefono ↔ PC si collauda in T-30)*
+- [~] Con entrambe le app attive sulla stessa rete, ciascuna elenca l'altra entro 30 s. *(meccanismo pronto e verificato desktop↔desktop in ~4 s, schermata pronta; telefono ↔ PC si collauda in T-30)*
 - [x] Il nome mostrato identifica il dispositivo in modo leggibile (`device_name`/modello su Android, hostname su desktop).
-- [~] Se il multicast è bloccato, l'app lo segnala e offre l'inserimento manuale di host e porta. *(`DiscoveryStatus.Unavailable` e `PeerDirectory.addManual` esistono e sono testati; la UI che li mostra è T-22)*
+- [x] Se il multicast è bloccato, l'app lo segnala e offre l'inserimento manuale di host e porta. *(messaggio in rosso nella schermata e dialog «Aggiungi un indirizzo» con la porta precompilata; il caso su rete reale è TC-15)*
 
 ### US-005 · Associare i dispositivi in modo sicuro
 **Priorità:** Must Have
@@ -159,9 +159,9 @@ configurare indirizzi IP o porte.
 Come utente voglio autorizzare esplicitamente l'associazione con un codice di conferma per
 essere certo che nessun altro sulla rete legga o alteri i miei promemoria.
 
-- [~] L'associazione richiede conferma su entrambi i lati tramite un codice **mostrato da
-      entrambi e confrontato a vista** — vedi lo scostamento motivato in §5. *(meccanismo fatto e
-      testato; la schermata è T-22)*
+- [x] L'associazione richiede conferma su entrambi i lati tramite un codice **mostrato da
+      entrambi e confrontato a vista** — vedi lo scostamento motivato in §5. Il dialogo chiede
+      esplicitamente «vedi questo stesso numero sull'altro dispositivo?».
 - [x] Un peer non associato che tenta di sincronizzare viene rifiutato, prima ancora di ricevere
       materiale crittografico su cui lavorare.
 - [x] Il traffico è cifrato: un terzo dispositivo sulla rete non legge i promemoria intercettando
@@ -188,9 +188,9 @@ per non dover ricordare cosa ho cambiato e dove.
 Come utente voglio vedere quando è avvenuta l'ultima sincronizzazione e con quale dispositivo
 per accorgermi se qualcosa non funziona.
 
-- [ ] Una schermata elenca il dispositivo associato con data/ora dell'ultimo sync riuscito.
-- [ ] Gli errori (peer irraggiungibile, rifiutato, timeout) sono mostrati in italiano.
-- [ ] È disponibile un comando "sincronizza ora".
+- [x] Una schermata elenca il dispositivo associato con data/ora dell'ultimo sync riuscito.
+- [x] Gli errori (peer irraggiungibile, rifiutato, timeout) sono mostrati in italiano.
+- [x] È disponibile un comando "sincronizza ora".
 
 ### US-008 · Esportare in ODS dal desktop
 **Priorità:** Should Have
@@ -351,7 +351,7 @@ piattaforma), **UI**, **Test**, **Doc**.
 | T-19 | ✅ **fatto** — tabella `peers` (schema v4, `MIGRATION_3_4`), ECDH P-256 effimero, HKDF-SHA256 verificato su RFC 5869, associazione con codice **confrontato a vista** (vedi nota sotto), canale AES-256-GCM con chiavi direzionali e sequenza autenticata, rifiuto dei non associati e delle versioni incompatibili. 19 test | Core | 2,5 | T-18 |
 | T-20 | ✅ **fatto** — `resolveMerge` (LWW con tie-break deterministico), `SyncEngine` con riprogrammazione degli allarmi, `SyncConversation` sopra il canale cifrato, `upsertFromRemote` realizzata come merge nel motore. Il watermark è dichiarato dal mittente e i due lati si scambiano prima le domande: vedi la nota sul clock skew | Core | 3,0 | T-17 |
 | T-21 | ✅ **fatto** — `SyncServer`/`SyncClient` su socket, `SyncService` che orchestra ricerca, ascolto, associazione e replica, flag `sync_enabled` spento di default, errori di rete come messaggi in italiano, `peerDao` e sincronizzazione nell'`AppContainer`, sync in foreground su Android da `onStart()`. Verificato l'avvio di entrambe le app col nuovo cablaggio | Core | 1,5 | T-19, T-20 |
-| T-22 | Schermata stato sincronizzazione: peer, ultimo sync, errori, sync manuale, dissociazione | UI | 2,0 | T-21 |
+| T-22 | ✅ **fatto** — schermata `sync`: stato e ultimo allineamento, dispositivi associati e trovati, codice **da confrontare** con conferma sui due lati, «sincronizza ora», dissociazione con conferma, inserimento manuale di host e porta. Verificata a runtime su emulatore | UI | 2,0 | T-21 |
 | T-23 | ✅ **fatto** — `commonTest`, `jvmSharedTest`, `desktopTest`, `desktopApp/src/test` e `androidInstrumentedTest`, quest'ultimo eseguito su emulatore | Test | 0,5 | T-02 |
 | T-24 | ✅ **fatto** — `./build.sh desktop` produce un AppImage da 69,6 MB: `createDistributable` + AppDir + `appimagetool`. Icona, `.desktop` e `AppRun` inclusi; `APPIMAGE` risulta valorizzato a runtime, quindi l'autostart funziona dall'AppImage | Infra | 2,5 | T-13 |
 | T-25 | Unit test: merge LWW, tombstone che non risorge, idempotenza, protocollo, pairing | Test | 2,5 | T-20, T-23 |
@@ -366,14 +366,14 @@ piattaforma), **UI**, **Test**, **Doc**.
 
 **Stima totale: 46,0 giorni/uomo** (46,5 iniziali − 0,5 di T-03, rimosso)
 **Breakdown:** Infra 7,5 gg · Core 20,5 gg · UI 7,0 gg · Test 9,0 gg · Doc 2,0 gg
-**Già completati:** 37,7 gg — **tranche 1 completa** salvo 0,3 gg di documentazione che dipende dalla sincronizzazione; della tranche 2 restano solo la UI (T-22) e i collaudi. **Restano 8,3 gg.**
+**Già completati:** 39,7 gg — **tutte le funzionalità sono implementate**: della tranche 2 restano i soli collaudi (T-25, T-29, T-30) e la documentazione (T-32, T-33). **Restano 6,3 gg.**
 
 **Due tranche:**
 
 | Tranche | Contenuto | Task | Stima |
 |---|---|---|---:|
 | **1 — App desktop** | Tutto tranne la sincronizzazione: desktop completo, installabile, con notifiche, tray, autostart, export | T-01…T-16 (T-03 escluso), T-23, T-24, T-27, T-28, T-31, T-32 | **27,5 gg** (24,0 residui) |
-| **2 — Sincronizzazione** | Schema v3, discovery, pairing, replica, UI di stato, collaudo | T-17…T-22, T-25, T-26, T-29, T-30, T-33 | **18,5 gg** (8,0 residui) |
+| **2 — Sincronizzazione** | Schema v3, discovery, pairing, replica, UI di stato, collaudo | T-17…T-22, T-25, T-26, T-29, T-30, T-33 | **18,5 gg** (6,0 residui) |
 
 > **Stato al 2026-08-20:** completati T-01, T-02, T-04…T-09, T-11…T-14, la parte centrale di
 > T-10 e metà di T-28 (**18,5 gg**). L'app desktop si avvia, apre il database, mostra gli eventi,

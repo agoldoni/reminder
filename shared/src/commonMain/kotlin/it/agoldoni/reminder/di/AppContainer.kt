@@ -13,6 +13,7 @@ import it.agoldoni.reminder.sync.SyncController
 import it.agoldoni.reminder.ui.completed.CompletedViewModel
 import it.agoldoni.reminder.ui.edit.EventEditViewModel
 import it.agoldoni.reminder.ui.list.EventListViewModel
+import it.agoldoni.reminder.ui.sync.SyncViewModel
 
 /**
  * Dipendenze dell'app. Le parti di piattaforma (allarmi, destinazione dell'export, database)
@@ -40,6 +41,7 @@ class AppContainer(
     val viewModelFactory: ViewModelProvider.Factory = viewModelFactory {
         initializer { EventListViewModel(eventDao, exportEventsUseCase, alarmScheduler) }
         initializer { CompletedViewModel(eventDao, alarmScheduler) }
+        initializer { SyncViewModel(sync) }
     }
 
     /** Factory dell'editor: l'id dell'evento arriva dalla rotta di navigazione. */

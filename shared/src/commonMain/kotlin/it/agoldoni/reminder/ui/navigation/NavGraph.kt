@@ -13,6 +13,7 @@ import androidx.navigation.navArgument
 import it.agoldoni.reminder.ui.completed.CompletedScreen
 import it.agoldoni.reminder.ui.edit.EventEditScreen
 import it.agoldoni.reminder.ui.list.EventListScreen
+import it.agoldoni.reminder.ui.sync.SyncScreen
 
 @Composable
 fun ReminderNavHost(navigationRequests: Flow<String> = emptyFlow()) {
@@ -28,7 +29,8 @@ fun ReminderNavHost(navigationRequests: Flow<String> = emptyFlow()) {
             EventListScreen(
                 onAddEvent = { navController.navigate("edit/0") },
                 onEditEvent = { id -> navController.navigate("edit/$id") },
-                onNavigateToCompleted = { navController.navigate("completed") }
+                onNavigateToCompleted = { navController.navigate("completed") },
+                onNavigateToSync = { navController.navigate("sync") }
             )
         }
         composable(
@@ -42,6 +44,9 @@ fun ReminderNavHost(navigationRequests: Flow<String> = emptyFlow()) {
         }
         composable("completed") {
             CompletedScreen(onBack = { navController.popBackStack() })
+        }
+        composable("sync") {
+            SyncScreen(onBack = { navController.popBackStack() })
         }
     }
 }
