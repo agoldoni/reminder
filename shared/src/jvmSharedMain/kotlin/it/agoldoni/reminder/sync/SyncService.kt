@@ -85,6 +85,14 @@ class SyncService(
     @Volatile
     private var interattivo = false
 
+    /**
+     * Come ci si presenta quando si è **noi** a chiamare: se in questo momento si ascolta, lo si
+     * dichiara, così l'altro sa a quale porta richiamarci invece di provare quella effimera da cui
+     * è arrivata la connessione.
+     */
+    private val identitaDichiarata: LocalIdentity
+        get() = identity.copy(listeningPort = _status.value.listeningPort)
+
     override fun start() {
         if (settings.syncEnabled.value) avvia()
     }
@@ -225,7 +233,7 @@ class SyncService(
         }
         var ultimo: SyncOutcome = SyncOutcome.Failed("Nessun tentativo effettuato.")
         for ((host, port) in indirizzi) {
-            ultimo = SyncClient.sync(host, port, identity, peers, engine, now())
+            ultimo = SyncClient.sync(host, port, identitaDichiarata, peers, engine, now())
             if (ultimo is SyncOutcome.Completed) return ultimo
         }
         return ultimo
@@ -238,7 +246,7 @@ class SyncService(
         val esito = SyncClient.pair(
             host = peer.host,
             port = peer.port,
-            identity = identity,
+            identity = identitaDichiarata,
             approval = { code, chi -> approval(code, chi.displayName) },
             nowMillis = now()
         )

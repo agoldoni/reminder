@@ -118,6 +118,13 @@ class SyncServer(
 
     val port: Int? get() = serverSocket?.localPort
 
+    /**
+     * L'identità che si dichiara è quella con la porta **effettiva**: chiedendone una a zero è il
+     * sistema a sceglierla, e annunciare quella richiesta manderebbe il peer altrove.
+     */
+    private val announced: LocalIdentity
+        get() = identity.copy(listeningPort = serverSocket?.localPort)
+
     /** [requestedPort] a zero fa scegliere la porta al sistema: serve ai test. */
     fun start(requestedPort: Int = SYNC_PORT): Int {
         serverSocket?.let { return it.localPort }
@@ -149,7 +156,7 @@ class SyncServer(
                 socket.soTimeout = READ_TIMEOUT_MILLIS
                 val input = socket.getInputStream()
                 val output = socket.getOutputStream()
-                val greeting = Handshake.asResponder(input, output, identity) ?: return
+                val greeting = Handshake.asResponder(input, output, announced) ?: return
                 when (greeting.intent) {
                     SyncIntent.PAIR -> pair(input, output, greeting)
                     SyncIntent.SYNC -> sync(input, output, greeting, socket)
@@ -186,8 +193,14 @@ class SyncServer(
             is SessionOutcome.Open -> {
                 val result = SyncConversation.accept(session.channel, engine, session.peer.watermark)
                 peers.rememberSync(session.peer.deviceId, result.watermark, now())
-                socket.inetAddress?.hostAddress?.let {
-                    peers.rememberAddress(session.peer.deviceId, it, socket.port)
+                // `socket.port` sarebbe la porta effimera del client, buona solo per questa
+                // connessione: quella su cui richiamarlo l'ha dichiarata nel saluto. Chi non
+                // ascolta non lascia nessun indirizzo, perché non ci sarebbe modo di richiamarlo.
+                val portaPeer = greeting.peer.listeningPort
+                if (portaPeer != null) {
+                    socket.inetAddress?.hostAddress?.let {
+                        peers.rememberAddress(session.peer.deviceId, it, portaPeer)
+                    }
                 }
                 onEvent(SyncServerEvent.Synced(session.peer, result))
             }

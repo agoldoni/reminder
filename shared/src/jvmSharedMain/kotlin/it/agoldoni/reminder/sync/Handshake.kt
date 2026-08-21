@@ -5,11 +5,23 @@ import java.io.InputStream
 import java.io.OutputStream
 import kotlinx.serialization.json.Json
 
-/** Come questo dispositivo si presenta nel dialogo. */
-data class LocalIdentity(val deviceId: String, val displayName: String)
+/**
+ * Come questo dispositivo si presenta nel dialogo. [listeningPort] è la porta su cui è a sua volta
+ * raggiungibile, `null` per chi non ascolta.
+ */
+data class LocalIdentity(
+    val deviceId: String,
+    val displayName: String,
+    val listeningPort: Int? = null
+)
 
 /** Chi si è trovato dall'altra parte, prima che ci sia un'associazione. */
-data class PeerIdentity(val deviceId: String, val displayName: String)
+data class PeerIdentity(
+    val deviceId: String,
+    val displayName: String,
+    /** Porta a cui richiamarlo; `null` se ha dichiarato di non ascoltare. */
+    val listeningPort: Int? = null
+)
 
 /**
  * Chiede all'utente di confrontare il codice. Riceve il codice a sei cifre e chi dice di essere
@@ -229,11 +241,14 @@ object Handshake {
         intent: SyncIntent
     ): Greeting? {
         output.sendMessage(
-            Hello(PROTOCOL_VERSION, identity.deviceId, identity.displayName, intent)
+            Hello(
+                PROTOCOL_VERSION, identity.deviceId, identity.displayName, intent,
+                identity.listeningPort
+            )
         )
         val ack = input.receiveMessage().expect<HelloAck>()
         return if (ack.protocolVersion != PROTOCOL_VERSION) null
-        else Greeting(PeerIdentity(ack.deviceId, ack.displayName), intent)
+        else Greeting(PeerIdentity(ack.deviceId, ack.displayName, ack.listeningPort), intent)
     }
 
     fun asResponder(
@@ -246,8 +261,15 @@ object Handshake {
             output.sendMessage(Rejected(messaggioVersione(hello.protocolVersion)))
             return null
         }
-        output.sendMessage(HelloAck(PROTOCOL_VERSION, identity.deviceId, identity.displayName))
-        return Greeting(PeerIdentity(hello.deviceId, hello.displayName), hello.intent)
+        output.sendMessage(
+            HelloAck(
+                PROTOCOL_VERSION, identity.deviceId, identity.displayName, identity.listeningPort
+            )
+        )
+        return Greeting(
+            PeerIdentity(hello.deviceId, hello.displayName, hello.listeningPort),
+            hello.intent
+        )
     }
 }
 

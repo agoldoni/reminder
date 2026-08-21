@@ -17,6 +17,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -170,6 +171,44 @@ class SyncTransportTest {
         val salvatoSulComputer = assertNotNull(computerDb.peerDao().getById("id-telefono"))
         assertEquals(ORA_TELEFONO, salvatoSulComputer.watermark)
         assertEquals(1_800_000_000_000L, salvatoSulComputer.lastContactAt, "il server usa il proprio now")
+        // Il telefono di questo test non ascolta: non c'è porta a cui richiamarlo, e registrare
+        // quella effimera da cui è arrivata la connessione sarebbe peggio che non registrare nulla.
+        assertNull(salvatoSulComputer.lastHost, "senza porta d'ascolto non c'è indirizzo utile")
+        assertNull(salvatoSulComputer.lastPort)
+    }
+
+    /**
+     * Il caso opposto: chi chiama dichiara la porta su cui ascolta a sua volta, e il server la
+     * registra al posto della porta effimera del socket. Senza, il tentativo di richiamarlo
+     * finirebbe contro una porta chiusa da tempo.
+     */
+    @Test
+    fun `chi ascolta viene registrato con la porta che ha dichiarato, non con quella effimera`() =
+        runBlocking {
+            val associato = CountDownLatch(1)
+            val porta = avviaServer(associato)
+            val telefonoInAscolto = telefono.copy(listeningPort = 51000)
+
+            val esito = SyncClient.pair(
+                "127.0.0.1", porta, telefonoInAscolto,
+                { code, _ -> codici["telefono"] = code; true }, 1_800_000_000_000L
+            )
+            telefonoDb.peerDao().upsert(assertIs<PairingOutcome.Paired>(esito).peer)
+            associato.await(5, TimeUnit.SECONDS)
+
+            val sincronizzato = CountDownLatch(1)
+            server?.stop()
+            val portaSync = avviaServer(sincronizzato)
+            SyncClient.sync(
+                "127.0.0.1", portaSync, telefonoInAscolto, telefonoDb.peerDao(),
+                SyncEngine(telefonoDb.eventDao(), RecordingAlarmScheduler()) { ORA_TELEFONO },
+                CONTATTO_TELEFONO
+            )
+            sincronizzato.await(5, TimeUnit.SECONDS)
+
+            val salvato = assertNotNull(computerDb.peerDao().getById("id-telefono"))
+            assertEquals(51000, salvato.lastPort, "la porta dichiarata nel saluto, non socket.port")
+            assertEquals("127.0.0.1", salvato.lastHost)
     }
 
     @Test

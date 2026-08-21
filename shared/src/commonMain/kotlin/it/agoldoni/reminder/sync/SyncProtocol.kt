@@ -28,7 +28,14 @@ data class Hello(
     val protocolVersion: Int,
     val deviceId: String,
     val displayName: String,
-    val intent: SyncIntent
+    val intent: SyncIntent,
+    /**
+     * Porta su cui chi si presenta è a sua volta raggiungibile, o `null` se non ascolta. Serve a
+     * poterlo richiamare: la porta del socket che ha aperto è effimera e vale solo per questa
+     * connessione, quindi salvarla al posto di questa manderebbe il tentativo successivo contro
+     * una porta che non esiste più.
+     */
+    val listeningPort: Int? = null
 ) : SyncMessage
 
 @Serializable
@@ -36,7 +43,8 @@ data class Hello(
 data class HelloAck(
     val protocolVersion: Int,
     val deviceId: String,
-    val displayName: String
+    val displayName: String,
+    val listeningPort: Int? = null
 ) : SyncMessage
 
 /** Rifiuto esplicito, con un motivo in italiano da mostrare all'utente. */
