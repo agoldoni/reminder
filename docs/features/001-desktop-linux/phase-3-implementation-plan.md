@@ -149,9 +149,9 @@ riaprire a ogni riavvio.
 Come utente voglio che telefono e PC si trovino da soli sulla stessa rete per non dover
 configurare indirizzi IP o porte.
 
-- [ ] Con entrambe le app attive sulla stessa rete, ciascuna elenca l'altra entro 30 s.
-- [ ] Il nome mostrato identifica il dispositivo in modo leggibile.
-- [ ] Se il multicast è bloccato, l'app lo segnala e offre l'inserimento manuale di host e porta.
+- [~] Con entrambe le app attive sulla stessa rete, ciascuna elenca l'altra entro 30 s. *(meccanismo pronto e verificato desktop↔desktop in ~4 s, schermata pronta; telefono ↔ PC si collauda in T-30)*
+- [x] Il nome mostrato identifica il dispositivo in modo leggibile (`device_name`/modello su Android, hostname su desktop).
+- [x] Se il multicast è bloccato, l'app lo segnala e offre l'inserimento manuale di host e porta. *(messaggio in rosso nella schermata e dialog «Aggiungi un indirizzo» con la porta precompilata; il caso su rete reale è TC-15)*
 
 ### US-005 · Associare i dispositivi in modo sicuro
 **Priorità:** Must Have
@@ -159,11 +159,14 @@ configurare indirizzi IP o porte.
 Come utente voglio autorizzare esplicitamente l'associazione con un codice di conferma per
 essere certo che nessun altro sulla rete legga o alteri i miei promemoria.
 
-- [ ] L'associazione richiede conferma su entrambi i lati tramite un codice mostrato da uno e
-      confermato dall'altro.
-- [ ] Un peer non associato che tenta di sincronizzare viene rifiutato.
-- [ ] Il traffico è cifrato: un terzo dispositivo sulla rete non legge i promemoria intercettando.
-- [ ] La dissociazione elimina le credenziali e interrompe le sincronizzazioni successive.
+- [x] L'associazione richiede conferma su entrambi i lati tramite un codice **mostrato da
+      entrambi e confrontato a vista** — vedi lo scostamento motivato in §5. Il dialogo chiede
+      esplicitamente «vedi questo stesso numero sull'altro dispositivo?».
+- [x] Un peer non associato che tenta di sincronizzare viene rifiutato, prima ancora di ricevere
+      materiale crittografico su cui lavorare.
+- [x] Il traffico è cifrato: un terzo dispositivo sulla rete non legge i promemoria intercettando
+      (verificato ispezionando i byte sul filo).
+- [x] La dissociazione elimina le credenziali e interrompe le sincronizzazioni successive.
 
 ### US-006 · Allineamento automatico delle modifiche
 **Priorità:** Must Have
@@ -171,13 +174,13 @@ essere certo che nessun altro sulla rete legga o alteri i miei promemoria.
 Come utente voglio che le modifiche fatte offline si allineino da sole al primo rientro in rete
 per non dover ricordare cosa ho cambiato e dove.
 
-- [ ] Un evento creato su un dispositivo compare sull'altro alla prima sincronizzazione utile.
-- [ ] Un evento modificato aggiorna l'altro senza duplicarsi.
-- [ ] Un evento eliminato viene eliminato anche sull'altro e non riappare in seguito.
-- [ ] Modifiche concorrenti allo stesso evento convergono allo stesso risultato su entrambi i
+- [x] Un evento creato su un dispositivo compare sull'altro alla prima sincronizzazione utile.
+- [x] Un evento modificato aggiorna l'altro senza duplicarsi.
+- [x] Un evento eliminato viene eliminato anche sull'altro e non riappare in seguito.
+- [x] Modifiche concorrenti allo stesso evento convergono allo stesso risultato su entrambi i
       dispositivi, senza duplicati né perdita degli altri eventi.
-- [ ] Dopo una sincronizzazione che tocca eventi futuri, gli allarmi locali sono riprogrammati.
-- [ ] Gli eventi presenti prima dell'aggiornamento sopravvivono alla migrazione v2 → v3 intatti.
+- [x] Dopo una sincronizzazione che tocca eventi futuri, gli allarmi locali sono riprogrammati.
+- [x] Gli eventi presenti prima dell'aggiornamento sopravvivono alle migrazioni di schema intatti.
 
 ### US-007 · Vedere lo stato della sincronizzazione
 **Priorità:** Should Have
@@ -185,9 +188,9 @@ per non dover ricordare cosa ho cambiato e dove.
 Come utente voglio vedere quando è avvenuta l'ultima sincronizzazione e con quale dispositivo
 per accorgermi se qualcosa non funziona.
 
-- [ ] Una schermata elenca il dispositivo associato con data/ora dell'ultimo sync riuscito.
-- [ ] Gli errori (peer irraggiungibile, rifiutato, timeout) sono mostrati in italiano.
-- [ ] È disponibile un comando "sincronizza ora".
+- [x] Una schermata elenca il dispositivo associato con data/ora dell'ultimo sync riuscito.
+- [x] Gli errori (peer irraggiungibile, rifiutato, timeout) sono mostrati in italiano.
+- [x] È disponibile un comando "sincronizza ora".
 
 ### US-008 · Esportare in ODS dal desktop
 **Priorità:** Should Have
@@ -268,10 +271,10 @@ socket server con l'app chiusa: il telefono sincronizza all'apertura e al rientr
 
 | Tabella/Tipo | Tipo modifica | Dettaglio |
 |---|---|---|
-| `events` | Modifica (schema v2 → v3) | `+uuid TEXT` (identità globale, indice unico), `+updatedAt INTEGER`, `+deleted INTEGER`, `+deletedAt INTEGER NULL`, `+origin TEXT`. `id` autoincrementale **resta**: è il requestCode dei `PendingIntent` e l'id delle notifiche |
+| `events` | Modifica (schema v2 → v3) | `+uuid TEXT` (identità globale, indice unico), `+updatedAt INTEGER`, `+deleted INTEGER`, `+deletedAt INTEGER NULL`, `+origin TEXT` (dispositivo di nascita, immutabile). `id` autoincrementale **resta**: è il requestCode dei `PendingIntent` e l'id delle notifiche |
 | `events` | Modifica semantica | `delete` diventa soft-delete; tutte le letture filtrano `deleted = 0`; ogni scrittura aggiorna `updatedAt` |
-| `peers` | Nuova | `deviceId`, `displayName`, `sharedSecret`, `lastHost`, `lastPort`, `pairedAt`, `lastSyncAt` |
-| `EventDao` | Modifica | nuove query `changedSince(millis)`, `getByUuid(uuid)`, `upsertFromRemote(...)` |
+| `peers` | Nuova (schema v3 → v4) | `deviceId` (chiave primaria: l'identità dichiarata dall'altro, stabile mentre l'IP cambia), `displayName`, `sharedSecret` (esadecimale, **in chiaro**: protetto dai permessi del file, non cifrato a riposo), `lastHost`, `lastPort`, `pairedAt`, `lastSyncAt` |
+| `EventDao` | Modifica | nuove query `changedSince(millis)`, `getByUuid(uuid)`; `upsertFromRemote(...)` arriva con T-20 insieme alla regola di merge |
 | Migrazione `MIGRATION_2_3` | Nuova | `ALTER TABLE` per le cinque colonne, popolamento `uuid` con `lower(hex(randomblob(...)))`, `updatedAt = dateTimeMillis` come valore iniziale |
 
 ### Protocollo di sincronizzazione (al posto delle API REST)
@@ -279,20 +282,40 @@ socket server con l'app chiusa: il telefono sincronizza all'apertura e al rientr
 | Messaggio | Direzione | Descrizione | Richiede pairing |
 |---|---|---|---|
 | `HELLO` | ↔ | deviceId, nome, versione di protocollo | No |
-| `PAIR_REQUEST` / `PAIR_CONFIRM` | ↔ | scambio del codice di conferma e del segreto condiviso | No (è l'atto di associarsi) |
-| `PULL(since)` | → | richiesta degli eventi modificati dopo `since` | Sì |
-| `PUSH(events)` | → | invio degli eventi modificati localmente | Sì |
-| `ACK(highWatermark)` | ← | conferma e nuovo watermark | Sì |
+| `PAIR_BEGIN` / `PAIR_KEY` | ↔ | scambio delle chiavi pubbliche effimere (ECDH P-256) | No (è l'atto di associarsi) |
+| `PAIR_CONFIRM` / `PAIR_DONE` | ↔ | prova incrociata di aver ricavato lo stesso segreto, dopo la conferma dell'utente | No |
+| `SESSION_BEGIN` / `SESSION_ACCEPT` / `SESSION_CONFIRM` | ↔ | nonce e autenticazione reciproca col segreto dell'associazione; da qui il canale è cifrato | Sì |
+| `PULL(since)` | → | richiesta degli eventi modificati **da** `since` in poi, estremo incluso | Sì |
+| `PUSH(events, upTo)` | → | eventi richiesti, più l'istante fino al quale il mittente garantisce di aver dato tutto | Sì |
+| `ACK(applied)` | ← | conferma che il lotto è stato applicato | Sì |
+
+Il watermark non viaggia nell'`ACK` ma in `upTo` dentro il `PUSH`: è chi manda a dichiarare fin
+dove ha dato, nel proprio tempo. Ricavarlo dal massimo `updatedAt` del lotto sarebbe sbagliato,
+perché il lotto può contenere eventi nati su un altro dispositivo con un altro orologio.
 
 Trasporto: socket TCP su canale cifrato con il segreto stabilito in fase di pairing,
 serializzazione `kotlinx.serialization`. Versione di protocollo esplicita nel primo messaggio:
 peer con versione incompatibile rifiutano invece di corrompere i dati.
 
+> **Scostamento sul modello di conferma (T-19), da rivedere se non convince.**
+> Il piano diceva «un codice mostrato da uno e confermato dall'altro», cioè un codice digitato.
+> Quel modello, sopra uno scambio ECDH, **non è sicuro**: chi si mette in mezzo negozia due
+> scambi, cattura la prova che dipende dal codice e ne prova offline tutti i milione di valori in
+> millisecondi. Renderlo sicuro richiede un PAKE vero (SPAKE2, J-PAKE), cioè molto più codice
+> crittografico — e una libreria in più nell'APK — di quanto ne meriti un'app personale.
+> L'implementazione usa invece il **confronto a vista**, lo stesso modello del pairing Bluetooth:
+> i due lati derivano dallo scambio lo **stesso** codice a sei cifre, lo mostrano entrambi, e
+> l'utente conferma su ciascuno di aver visto lo stesso numero. Chi è in mezzo produce due codici
+> diversi e ha una probabilità su un milione di indovinare. Il criterio di US-005 «conferma su
+> entrambi i lati» è soddisfatto — anzi la conferma è esplicita su entrambi invece che su uno.
+> **Conseguenza per T-22:** la schermata mostra un codice e chiede «vedi questo stesso numero
+> sull'altro dispositivo?», non un campo in cui digitarlo.
+
 ### Breaking changes
 
 | Componente | Tipo di breaking change | Piano di migrazione |
 |---|---|---|
-| Database `reminder.db` | Schema v2 → v3, **non reversibile**: una release precedente non apre un DB v3 | Migrazione automatica all'avvio; backup del file DB prima del primo avvio della versione nuova (vedi §9) |
+| Database `reminder.db` | Schema v2 → v4, **non reversibile**: una release precedente non apre un DB v3 | Migrazione automatica all'avvio; backup del file DB prima del primo avvio della versione nuova (vedi §9) |
 | `EventDao.delete()` | Da cancellazione fisica a soft-delete | 2 soli chiamanti: `EventListViewModel.delete`, `CompletedViewModel.delete` |
 | `ExportEventsUseCase.execute()` | Ritorna `Result<ExportedFile>` invece di `Result<Uri>` | Il consumo passa a `ExportTarget`; `ExportUiState` ed `EmptyExportException` invariati |
 | `AlarmScheduler` | Da `object` statico a interfaccia iniettata | 3 ViewModel + 2 receiver aggiornati contestualmente |
@@ -307,52 +330,63 @@ piattaforma), **UI**, **Test**, **Doc**.
 
 | ID | Task | Area | Stima (gg) | Dipende da |
 |---|---|---|---:|---|
-| T-01 | Prototipo di allineamento versioni Kotlin/AGP/CMP/Room KMP che compili su Android e desktop e apra un DB su entrambi | Infra | 2,0 | — |
-| T-02 | Creazione moduli `:shared`/`:androidApp`/`:desktopApp` e spostamento dei sorgenti senza modifiche funzionali | Infra | 3,0 | T-01 |
-| T-03 | Riscrittura del rename APK con la Variant API (necessaria se T-01 impone AGP 9.x) | Infra | 0,5 | T-02 |
+| T-01 | ✅ **fatto** — terna validata: Gradle 8.14.5 · AGP 8.13.2 · Kotlin 2.3.21 · KSP 2.3.11 · CMP 1.11.1 · Room 2.8.4. Esito in [t01-toolchain-validation.md](t01-toolchain-validation.md) | Infra | 2,0 | — |
+| T-02 | ✅ **fatto** — toolchain aggiornata in place e moduli `:shared`/`:androidApp`/`:desktopApp` creati; i 25 sorgenti spostati con `git mv` | Infra | 3,0 | T-01 |
+| ~~T-03~~ | ❌ **rimosso** — T-01 ha validato AGP 8.13.2: `applicationVariants` resta valida e il rename dell'APK non va riscritto | Infra | ~~0,5~~ | — |
 | T-04 | ✅ **fatto** — `exportSchema = true` + `room.schemaLocation`, schema v2 esportato in `app/schemas/` | Core | 0,5 | — |
 | T-05 | ✅ **fatto** — `BootReceiver` legge il DAO dal container via `EntryPointAccessors`: niente secondo database senza migrazioni (R15) | Core | 0,5 | — |
-| T-06 | Rimozione di Hilt e introduzione del container DI **manuale** (12 punti di iniezione) | Core | 2,0 | T-02 |
+| T-06 | ✅ **fatto** — Hilt rimosso, `AppContainer` manuale, ViewModel costruiti da `viewModelFactory`, `AndroidViewModel`/`SavedStateHandle` eliminati | Core | 2,0 | — |
 | T-07 | ✅ **fatto** — permesso notifiche chiesto in `MainActivity` all'avvio (R17); `RequestCodes` con blocchi da 8 slot per evento (R16). `cancel()` annulla ora anche gli snooze pendenti e i codici legacy: prima un evento rinviato e poi completato o eliminato faceva comunque scattare la notifica | Core | 0,5 | — |
-| T-08 | Room KMP: runtime, driver SQLite bundled, `DatabaseFactory` per piattaforma, percorso XDG su desktop | Core | 2,0 | T-02 |
-| T-09 | Livello `platform`: `AppInfo`, `DateFormat`, colori dinamici, interfacce `AlarmScheduler`/`Notifier` | Core | 1,0 | T-06 |
-| T-10 | UI desktop: finestra, navigazione multipiattaforma, tre schermate operative | UI | 3,0 | T-08, T-09 |
-| T-11 | Scheduler desktop in-process + recupero delle scadenze maturate ad app spenta | Core | 1,5 | T-10 |
-| T-12 | Notifiche desktop con azioni +5 min / +1 ora / completa | Core | 1,0 | T-11 |
-| T-13 | Tray: icona, menù, chiusura-a-tray, istanza singola | UI | 1,5 | T-10 |
-| T-14 | Autostart: scrittura/rimozione di `~/.config/autostart/promemoria.desktop` | Core | 0,5 | T-13 |
-| T-15 | `ExportTarget` e refactor di `ExportEventsUseCase` (via `Context`/`FileProvider`/`Log`) | Core | 1,0 | T-09 |
-| T-16 | Dialog di salvataggio nativo per l'export desktop | UI | 0,5 | T-15 |
-| T-17 | Schema v3, `MIGRATION_2_3`, DAO con soft-delete e `updatedAt` | Core | 1,5 | T-08, T-04 |
-| T-18 | Discovery mDNS: `NsdManager` su Android (con multicast lock), `jmdns` su desktop, fallback manuale host/porta | Core | 1,5 | T-17 |
-| T-19 | Pairing: codice di conferma, segreto condiviso, canale cifrato, tabella `peers` | Core | 2,5 | T-18 |
-| T-20 | `SyncProtocol` + `SyncEngine`: merge LWW, tombstone, watermark, idempotenza | Core | 3,0 | T-17 |
-| T-21 | Integrazione trasporto ↔ engine: riprogrammazione allarmi, gestione errori, sync in foreground su Android | Core | 1,5 | T-19, T-20 |
-| T-22 | Schermata stato sincronizzazione: peer, ultimo sync, errori, sync manuale, dissociazione | UI | 2,0 | T-21 |
-| T-23 | Creazione dei source set di test (`commonTest`, `jvmSharedTest`, `desktopTest`, `androidInstrumentedTest`) | Test | 0,5 | T-02 |
-| T-24 | Packaging AppImage (`jpackage --type app-image` + `appimagetool`), icona, `.desktop`, `./build.sh desktop` | Infra | 2,5 | T-13 |
-| T-25 | Unit test: merge LWW, tombstone che non risorge, idempotenza, protocollo, pairing | Test | 2,5 | T-20, T-23 |
-| T-26 | Test di migrazione 2→3 con `MigrationTestHelper` | Test | 0,5 | T-17, T-23 |
-| T-27 | Unit test: golden ODS + formattazione date | Test | 1,0 | T-15, T-23 |
-| T-28 | Unit test: scheduler desktop, autostart, istanza singola | Test | 1,0 | T-14, T-23 |
-| T-29 | Test di integrazione: due istanze desktop che si scoprono, si associano e convergono | Test | 1,5 | T-21 |
-| T-30 | Collaudo manuale telefono ↔ desktop su rete reale (inclusi casi offline e conflitto) | Test | 1,0 | T-22 |
-| T-31 | Non-regressione Android su device: allarmi, snooze, boot, export/share, aggiornamento in place | Test | 1,0 | T-21, T-24 |
-| T-32 | Aggiornamento `README.md` e `CLAUDE.md` (moduli, build desktop, requisiti di rete) | Doc | 1,0 | T-24 |
-| T-33 | Guida a pairing e rete + note di distribuzione AppImage | Doc | 1,0 | T-30 |
+| T-08 | ✅ **fatto** — Room KMP con `@ConstructedBy`, migrazione riscritta su `SQLiteConnection`, driver per piattaforma, DB desktop in `~/.local/share/promemoria`; `identityHash` dello schema invariato | Core | 2,0 | T-02 |
+| T-09 | ✅ **fatto** (Notifier rimandato a T-12) — `AppInfo`, date in `jvmSharedMain`, colori dinamici `expect/actual`, `AlarmScheduler` come interfaccia, `LocalAppContainer` | Core | 1,0 | T-06 |
+| T-10 | ✅ **fatto** — finestra 900×700, navigazione multipiattaforma e le tre schermate verificate su desktop con dati reali (lista, editor di un evento esistente, Fatti) | UI | 3,0 | T-08, T-09 |
+| T-11 | ✅ **fatto** — `DesktopAlarmScheduler`: una coroutine in attesa per evento, `bootstrap()` riprogramma i futuri e recupera gli scaduti all'avvio (nuova query DAO `getOverdueEvents`) | Core | 1,5 | T-10 |
+| T-12 | ✅ **fatto** — `DesktopNotifier` via `notify-send` (libnotify ≥ 0.8, azioni con `-A`); +5 min, +1 ora e Completa; verificate a runtime su Cinnamon | Core | 1,0 | T-11 |
+| T-13 | ✅ **fatto** — tray con icona propria e menù (Apri · Nuovo promemoria · Avvia al login · Esci), chiusura-a-tray, istanza singola via socket sul loopback che riporta in primo piano la finestra esistente | UI | 1,5 | T-10 |
+| T-14 | ✅ **fatto** — `Autostart` scrive/rimuove il `.desktop` XDG; il comando di avvio viene da `APPIMAGE`, e senza di esso la voce di menù non compare | Core | 0,5 | T-13 |
+| T-15 | ✅ **fatto** — `ExportTarget` per piattaforma e use case comune; `Exporter` restituisce `ByteArray` invece di scrivere su `OutputStream` | Core | 1,0 | T-09 |
+| T-16 | ✅ **fatto** — `FileDialog` nativo in modalità salvataggio; annullare non scrive nulla | UI | 0,5 | T-15 |
+| T-17 | ✅ **fatto** — schema v3 (`uuid` con indice unico, `updatedAt`, `deleted`/`deletedAt`, `origin`), `migration2to3(deviceId)`, DAO con soft-delete e letture filtrate, `changedSince()`, `getByUuid()`, identità del dispositivo persistita per piattaforma. `upsertFromRemote()` è rinviata a T-20, dove la regola LWW che la definisce viene scritta e testata | Core | 1,5 | T-08, T-04 |
+| T-18 | ✅ **fatto** — contratto `Discovery` in `commonMain` su `_promemoria-sync._tcp`, `NsdDiscovery` (multicast lock + risoluzioni serializzate), `JmdnsDiscovery` (indirizzo di sito esplicito), `PeerDirectory` che unisce trovati e digitati. 9 unit test + 1 round-trip mDNS reale su desktop + 1 strumentato sul cablaggio Android | Core | 1,5 | T-17 |
+| T-19 | ✅ **fatto** — tabella `peers` (schema v4, `MIGRATION_3_4`), ECDH P-256 effimero, HKDF-SHA256 verificato su RFC 5869, associazione con codice **confrontato a vista** (vedi nota sotto), canale AES-256-GCM con chiavi direzionali e sequenza autenticata, rifiuto dei non associati e delle versioni incompatibili. 19 test | Core | 2,5 | T-18 |
+| T-20 | ✅ **fatto** — `resolveMerge` (LWW con tie-break deterministico), `SyncEngine` con riprogrammazione degli allarmi, `SyncConversation` sopra il canale cifrato, `upsertFromRemote` realizzata come merge nel motore. Il watermark è dichiarato dal mittente e i due lati si scambiano prima le domande: vedi la nota sul clock skew | Core | 3,0 | T-17 |
+| T-21 | ✅ **fatto** — `SyncServer`/`SyncClient` su socket, `SyncService` che orchestra ricerca, ascolto, associazione e replica, flag `sync_enabled` spento di default, errori di rete come messaggi in italiano, `peerDao` e sincronizzazione nell'`AppContainer`, sync in foreground su Android da `onStart()`. Verificato l'avvio di entrambe le app col nuovo cablaggio | Core | 1,5 | T-19, T-20 |
+| T-22 | ✅ **fatto** — schermata `sync`: stato e ultimo allineamento, dispositivi associati e trovati, codice **da confrontare** con conferma sui due lati, «sincronizza ora», dissociazione con conferma, inserimento manuale di host e porta. Verificata a runtime su emulatore | UI | 2,0 | T-21 |
+| T-23 | ✅ **fatto** — `commonTest`, `jvmSharedTest`, `desktopTest`, `desktopApp/src/test` e `androidInstrumentedTest`, quest'ultimo eseguito su emulatore | Test | 0,5 | T-02 |
+| T-24 | ✅ **fatto** — `./build.sh desktop` produce un AppImage da 69,6 MB: `createDistributable` + AppDir + `appimagetool`. Icona, `.desktop` e `AppRun` inclusi; `APPIMAGE` risulta valorizzato a runtime, quindi l'autostart funziona dall'AppImage | Infra | 2,5 | T-13 |
+| T-25 | ✅ **fatto** — merge, tombstone, idempotenza e pairing erano già coperti dai test scritti lungo la strada; restava il **formato sul filo**, che gli altri test attraversavano sempre in entrambi i sensi con lo stesso codice e quindi non verificavano. 7 test: andata e ritorno di ogni messaggio, discriminatore, campo obbligatorio mancante, messaggio troncato o di tipo ignoto. Ha fatto emergere che `Json` strict avrebbe fatto cadere un peer su un campo aggiunto in seguito | Test | 2,5 | T-20, T-23 |
+| T-26 | ✅ **fatto** — 4 test: eventi v2 conservati, colonne di sync popolate (uuid canonici e distinti, `updatedAt`, `origin`), indice unico attivo, tombstone invisibile all'app ma leggibile da `getByUuid`/`changedSince`. Girano in `desktopTest` su SQLite reale invece che su emulatore: aprire il database con `createAppDatabase` fa validare lo schema a Room, che è la garanzia che dava `MigrationTestHelper` | Test | 0,5 | T-17, T-23 |
+| T-27 | ✅ **fatto** — 10 test: struttura ODS (mimetype STORED per primo, manifest, contenuto), escape XML e le maschere di data | Test | 1,0 | T-15, T-23 |
+| T-28 | ✅ **fatto** — 13 test: autostart, istanza singola e scheduler desktop (scadenza, annullamento, riprogrammazione, bootstrap, azioni Completa e Posticipa) con tempo virtuale | Test | 1,0 | T-14, T-23 |
+| T-29 | ✅ **fatto** — due istanze complete che si trovano da sole via mDNS, si associano confrontando il codice e convergono, **senza che nessuno passi a nessuno un indirizzo scritto a mano**. È l'unico test che mette insieme scoperta e trasporto: separatamente entrambi funzionavano anche quando l'annuncio usciva sull'interfaccia sbagliata o la porta annunciata non era quella d'ascolto. ~5 s, stabile su esecuzioni ripetute | Test | 1,5 | T-21 |
+| T-30 | ⏳ **parziale (0,9 di 1,0)** — su Redmi Note 7 + desktop: migrazioni fino alla v5 sui dati reali, associazione con confronto a vista in **entrambe** le direzioni (telefono→PC via `adb reverse`; **PC→telefono sulla rete vera**), sincronizzazione nei due versi, idempotenza sul campo (nuova associazione, watermark azzerato, eventi rispediti, **nessun duplicato**), e il giro rifatto dopo le correzioni: porta dichiarata salvata al posto di quella effimera, `lastContactAt` in ora locale coerente fra riepilogo e peer, indirizzo proprio mostrato su entrambe le piattaforme. Restano: scoperta mDNS telefono ↔ PC — impossibile qui, i due sono su sottoreti diverse — e i casi offline e conflitto | Test | 1,0 | T-22 |
+| T-31 | ✅ **fatto** — su device: avvio, creazione, allarme programmato e annullato, Fatti, eliminazione, dialog Info, aggiornamento in place dalla versione pre-KMP con dati conservati, export/share (ODS aperto in LibreOffice) e **snooze da notifica** (notifica puntuale, azione +5 min che riprogramma e chiude). La riprogrammazione al boot è coperta da un test strumentato: `BOOT_COMPLETED` è un broadcast protetto e resta verificabile solo con un riavvio vero | Test | 1,0 | T-21, T-24 |
+| T-32 | ✅ **fatto** — `README.md` e `CLAUDE.md` aggiornati; i requisiti di rete della sincronizzazione (porta, mDNS, chi ascolta e quando, cifratura, nessun dato verso internet) sono ora nel README | Doc | 1,0 | T-24 |
+| T-33 | ✅ **fatto** — nel `README.md`: come si associano i due dispositivi, perché il codice si confronta e non si digita, cosa fare quando non si trovano (mDNS è link-local), il fallback manuale, la dissociazione e le note sulle migrazioni non reversibili. Le note di distribuzione AppImage c'erano già | Doc | 1,0 | T-30 |
 
-**Stima totale: 46,5 giorni/uomo**
-**Breakdown:** Infra 8,0 gg · Core 20,5 gg · UI 7,0 gg · Test 9,0 gg · Doc 2,0 gg
+**Stima totale: 46,0 giorni/uomo** (46,5 iniziali − 0,5 di T-03, rimosso)
+**Breakdown:** Infra 7,5 gg · Core 20,5 gg · UI 7,0 gg · Test 9,0 gg · Doc 2,0 gg
+**Già completati:** 45,9 gg. Resta lo **0,1 gg di T-30**: il collaudo sul campo dei casi offline e conflitto. Fuori dal piano restano le voci di rilascio: AppImage da ricostruire, build release firmata e unione in `main`.
 
 **Due tranche:**
 
 | Tranche | Contenuto | Task | Stima |
 |---|---|---|---:|
-| **1 — App desktop** | Tutto tranne la sincronizzazione: desktop completo, installabile, con notifiche, tray, autostart, export | T-01…T-16, T-23, T-24, T-27, T-28, T-31, T-32 | **28,0 gg** |
-| **2 — Sincronizzazione** | Schema v3, discovery, pairing, replica, UI di stato, collaudo | T-17…T-22, T-25, T-26, T-29, T-30, T-33 | **18,5 gg** |
+| **1 — App desktop** | Tutto tranne la sincronizzazione: desktop completo, installabile, con notifiche, tray, autostart, export | T-01…T-16 (T-03 escluso), T-23, T-24, T-27, T-28, T-31, T-32 | **27,5 gg** (24,0 residui) |
+| **2 — Sincronizzazione** | Schema v3, discovery, pairing, replica, UI di stato, collaudo | T-17…T-22, T-25, T-26, T-29, T-30, T-33 | **18,5 gg** (6,0 residui) |
 
-> **Anticipati il 2026-08-20:** T-04, T-05 e T-07 sono già stati eseguiti sull'app Android
-> attuale, prima dell'apertura del cantiere KMP (build debug verde). Restano **45,0 gg**.
+> **Stato al 2026-08-20:** completati T-01, T-02, T-04…T-09, T-11…T-14, la parte centrale di
+> T-10 e metà di T-28 (**18,5 gg**). L'app desktop si avvia, apre il database, mostra gli eventi,
+> programma gli allarmi, notifica (recupero delle scadenze perse incluso), resta nella tray a
+> finestra chiusa e rifiuta le istanze doppie. **Restano 27,5 gg.**
+>
+> Non ancora verificate a runtime: le azioni della notifica (posticipa/completa), che richiedono
+> un clic dell'utente; il codice c'è, la prova arriverà con i test desktop di T-28.
+>
+> **Riordino rispetto al piano:** T-06 è stato anticipato prima di T-02 per un vincolo tecnico —
+> Hilt non funziona in un modulo KMP, quindi finché c'era non era possibile spostare i sorgenti
+> in `commonMain`. Toglierlo mentre la toolchain era ancora quella collaudata ha permesso di
+> verificare le due modifiche separatamente, invece di debuggarle insieme.
 >
 > **Scostamento dalle stime precedenti — da leggere prima di approvare.**
 > La Fase 1 conteneva due totali fra loro incoerenti (36,0 gg nella tabella per aree, 39,0 gg
@@ -379,30 +413,30 @@ device o emulatore Android.
 
 | ID | Tipo | Descrizione | Priorità |
 |---|---|---|---|
-| TC-01 | Unit | Modifiche concorrenti allo stesso evento: entrambi i lati convergono sullo stesso stato (LWW) | Alta |
-| TC-02 | Unit | Evento cancellato su un lato non riappare dopo due cicli di sync | Alta |
-| TC-03 | Unit | Due `PUSH` identici consecutivi non duplicano eventi (idempotenza) | Alta |
-| TC-04 | Unit | Peer con versione di protocollo diversa viene rifiutato con errore esplicito | Alta |
-| TC-05 | Unit | Peer non associato rifiutato; codice di pairing errato rifiutato | Alta |
-| TC-06 | Strumentale | Migrazione 2→3: eventi v2 conservati, `uuid` popolati e univoci, `updatedAt` valorizzato | Alta |
+| TC-01 | ✅ Unit | Modifiche concorrenti allo stesso evento: entrambi i lati convergono sullo stesso stato (LWW) | Alta |
+| TC-02 | ✅ Unit | Evento cancellato su un lato non riappare dopo due cicli di sync | Alta |
+| TC-03 | ✅ Unit | Due `PUSH` identici consecutivi non duplicano eventi (idempotenza) | Alta |
+| TC-04 | ✅ Unit | Peer con versione di protocollo diversa viene rifiutato con errore esplicito | Alta |
+| TC-05 | ✅ Unit | Peer non associato rifiutato; codice non confermato e segreto diverso rifiutati | Alta |
+| TC-06 | ✅ Unit (JVM) | Migrazione 2→3: eventi v2 conservati, `uuid` popolati e univoci, `updatedAt` valorizzato | Alta |
 | TC-07 | Unit | Golden test ODS: `mimetype` STORED come primo entry, righe attese, filtro `OPEN_ONLY` | Media |
 | TC-08 | Unit | Scheduler desktop: scadenza futura programmata, scadenza passata → recupero all'avvio, snooze +5/+60 | Alta |
 | TC-09 | Unit | Autostart: creazione e rimozione del `.desktop`; secondo avvio che non duplica il processo | Media |
-| TC-10 | Integrazione | Due istanze desktop sulla stessa macchina: discovery → pairing → convergenza degli eventi | Alta |
-| TC-11 | Manuale | Telefono ↔ desktop su rete reale: creazione, modifica, cancellazione in entrambe le direzioni | Alta |
+| TC-10 | ✅ Integrazione | Due istanze desktop sulla stessa macchina: discovery → pairing → convergenza degli eventi | Alta |
+| TC-11 | ~ Manuale | Telefono ↔ desktop: creazione verificata in **entrambe** le direzioni, la seconda su rete vera; modifica e cancellazione restano da provare | Alta |
 | TC-12 | Manuale | Modifiche offline su entrambi i lati, poi rientro in rete: convergenza senza perdite | Alta |
 | TC-13 | Manuale | Notifica desktop a finestra chiusa e ad app riavviata dopo la scadenza | Alta |
 | TC-14 | Manuale | Android: allarme, snooze da notifica, riavvio device, export/share, aggiornamento sopra l'installazione esistente con dati conservati | Alta |
-| TC-15 | Manuale | Rete con multicast bloccato: messaggio chiaro e fallback manuale funzionante | Media |
+| TC-15 | ✅ Manuale | Rete con multicast bloccato: il fallback manuale ha funzionato — è la strada con cui è stata fatta l'associazione telefono ↔ desktop | Media |
 
 ### Definition of Done
 
-- [ ] Tutti i test unitari passano in locale (`commonTest`, `jvmSharedTest`, `desktopTest`).
-- [ ] TC-06 eseguito su device o emulatore con esito positivo.
+- [x] Tutti i test unitari passano in locale (`commonTest`, `jvmSharedTest`, `desktopTest`): 113 test.
+- [x] TC-06 eseguito con esito positivo (su JVM desktop, non su emulatore: vedi T-26).
 - [ ] TC-11 → TC-14 eseguiti manualmente e annotati nel documento di collaudo.
-- [ ] Nessuna eccezione non gestita nei log durante una sessione di sync completa.
-- [ ] L'AppImage si avvia su una macchina pulita senza dipendenze aggiuntive.
-- [ ] `README.md` e `CLAUDE.md` aggiornati.
+- [x] Nessuna eccezione non gestita nei log durante una sessione di sync completa (verificato in `logcat` sul telefono e nei log del desktop).
+- [x] L'AppImage si avvia su una macchina pulita senza dipendenze aggiuntive: `Promemoria-2.0.0-x86_64.AppImage` (70,5 MB) avviata con `XDG_DATA_HOME` vuoto crea i suoi dati allo schema 5, mostra la versione giusta e mette in ascolto la sincronizzazione.
+- [x] `README.md` e `CLAUDE.md` aggiornati.
 - [ ] Build Android release firmata e installabile sopra la versione precedente.
 
 ---
@@ -411,15 +445,15 @@ device o emulatore Android.
 
 | Rischio | Probabilità | Impatto | Mitigazione |
 |---|---|---|---|
-| La terna Kotlin/AGP/CMP non si allinea senza attriti (salto da Kotlin 2.0.21 e AGP 8.7.3) | Media | Alto | T-01 è un prototipo throw-away che valida la terna prima di qualsiasi altro lavoro |
-| Le policy Android impediscono la sync ad app chiusa | Alta | Medio | Modello asimmetrico per progetto: desktop sempre in ascolto, Android sincronizza in foreground |
+| ~~La terna Kotlin/AGP/CMP non si allinea~~ **risolto**: T-01 ha validato lo stack su entrambi i target il 2026-08-20 | — | — | — |
+| Le policy Android impediscono la sync ad app chiusa | Alta | Medio | **Confermato e mitigato meglio del previsto.** Ad app chiusa il telefono non ascolta e sincronizza chiamando lui al rientro in foreground; **mentre la schermata di sincronizzazione è aperta ascolta però anche lui**, perché in primo piano un socket in ascolto è lecito. Questo salva le reti in cui è il telefono a non raggiungere il PC, dove il modello puramente asimmetrico non avrebbe funzionato affatto |
 | mDNS non passa (AP isolation, rete ospiti, VLAN) | Media | Medio | Fallback con host/porta manuali + messaggio diagnostico (TC-15) |
 | ~~`BootReceiver` apre il DB senza migrazioni~~ **risolto** con T-05 il 2026-08-20 | — | — | — |
 | ~~Collisioni di requestCode con id vicini~~ **risolto** con T-07 il 2026-08-20 | — | — | — |
 | Regressioni sull'app Android durante lo spostamento dei moduli | Media | Alto | T-02 senza modifiche funzionali + TC-14 come cancello prima di proseguire |
 | ~~Tray assente se il desktop target è GNOME Shell~~ **decaduto**: target confermato Cinnamon/X11, tray nativa | — | — | — |
 | `appimagetool` non installato sulla macchina di build | Alta (certa oggi) | Basso | Procurarlo in T-24; è un AppImage a sua volta, nessuna installazione di sistema |
-| Clock skew fra dispositivi falsa la regola LWW | Bassa | Medio | Timestamp UTC + tolleranza; in T-20 valutare un contatore di versione per evento |
+| Clock skew fra dispositivi falsa la regola LWW | Bassa | Medio | **Valutato in T-20, come previsto.** Il rischio si è rivelato doppio. *Sul watermark* era grave e ora è **eliminato per costruzione**: ogni lato chiede con il proprio metro, il watermark è l'istante dichiarato dal mittente, e i due si scambiano prima le domande così che nessuno rimandi indietro ciò che ha appena ricevuto. *Sulla regola LWW* resta: un dispositivo con l'orologio avanti vince anche quando è anteriore. Un contatore di versione per evento non lo risolverebbe — servirebbero orologi vettoriali — e con due dispositivi il danno si limita a una modifica concorrente allo stesso evento. **Accettato consapevolmente** |
 | Il totale di 46,5 gg risulta insostenibile | Media | Medio | Consegna a tranche: la tranche 1 (28,0 gg) è autonoma e già utile |
 
 ---
@@ -434,7 +468,7 @@ distribuzione: il rollout coincide con l'installazione sui due dispositivi dell'
       nessuna migrazione, nessun rischio sui dati.
 - [x] **Tranche 2** — migrazione allo schema v3 e attivazione della sincronizzazione.
 
-**Feature flag:** `sync_enabled`, impostazione applicativa persistita, **disattivata di default**.
+**Feature flag:** `sync_enabled` — ✅ **implementato in T-21** (`AppSettings`, `SharedPreferences` su Android e file di properties su desktop), impostazione applicativa persistita, **disattivata di default**.
 Finché è spenta non vengono aperti socket né annunci mDNS, e l'app si comporta come nella
 tranche 1. Si accende quando l'utente avvia il primo pairing. È un interruttore runtime, non di
 build: permette di spegnere la sync in caso di problemi senza reinstallare nulla.

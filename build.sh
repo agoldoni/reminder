@@ -7,7 +7,15 @@ cd "$PROJECT_DIR"
 # --- Configurazione ---
 ANDROID_SDK="${ANDROID_HOME:-$HOME/Android/Sdk}"
 export ANDROID_HOME="$ANDROID_SDK"
-BUILD_TYPE="${1:-debug}"   # debug | release
+BUILD_TYPE="${1:-debug}"   # debug | release | desktop
+
+# La versione del prodotto sta in gradle.properties, unica per Android e desktop. Prima si
+# leggeva con sed dai file .gradle.kts, dove era scritta a mano: quando è passata a una
+# proprietà condivisa quell'estrazione ha smesso di trovarla, in silenzio, e gli artefatti sono
+# usciti chiamati "Promemoria--x86_64.AppImage".
+version_prodotto() {
+    sed -nE 's/^promemoriaVersion=(.*)$/\1/p' gradle.properties | head -1
+}
 
 # Verifica Android SDK
 if [ ! -d "$ANDROID_SDK" ]; then
@@ -30,7 +38,7 @@ case "$BUILD_TYPE" in
     debug)
         echo "[INFO] Avvio build debug..."
         ./gradlew assembleDebug
-        APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
+        ARTIFACT="androidApp/build/outputs/apk/debug/androidApp-debug.apk"
         ;;
     release)
         # Verifica che le credenziali di firma siano disponibili
@@ -49,8 +57,54 @@ case "$BUILD_TYPE" in
         fi
         echo "[INFO] Avvio build release..."
         ./gradlew assembleRelease
-        VERSION_NAME="$(sed -nE 's/^[[:space:]]*versionName[[:space:]]*=[[:space:]]*"(.*)".*/\1/p' app/build.gradle.kts | head -1)"
-        APK_PATH="app/build/outputs/apk/release/reminder-${VERSION_NAME}.apk"
+        VERSION_NAME="$(version_prodotto)"
+        ARTIFACT="androidApp/build/outputs/apk/release/reminder-${VERSION_NAME}.apk"
+        ;;
+    desktop)
+        # AppImage: jpackage produce una directory autoconsistente, appimagetool la impacchetta
+        APPIMAGETOOL="${APPIMAGETOOL:-$(command -v appimagetool || true)}"
+        if [ -z "$APPIMAGETOOL" ]; then
+            echo "[ERRORE] appimagetool non trovato."
+            echo "         Scaricalo da https://github.com/AppImage/appimagetool/releases"
+            echo "         e mettilo nel PATH, oppure indicalo con APPIMAGETOOL=/percorso/appimagetool"
+            exit 1
+        fi
+
+        echo "[INFO] Avvio build desktop..."
+        ./gradlew :desktopApp:createDistributable
+
+        DIST="desktopApp/build/compose/binaries/main/app/Promemoria"
+        APPDIR="desktopApp/build/appimage/Promemoria.AppDir"
+        VERSION_NAME="$(version_prodotto)"
+        ARTIFACT="desktopApp/build/appimage/Promemoria-${VERSION_NAME}-x86_64.AppImage"
+
+        echo "[INFO] Preparazione AppDir..."
+        rm -rf "$APPDIR" "$ARTIFACT"
+        mkdir -p "$APPDIR/usr"
+        cp -r "$DIST"/. "$APPDIR/usr/"
+        cp desktopApp/src/main/resources/icon.png "$APPDIR/promemoria.png"
+        cp desktopApp/src/main/resources/icon.png "$APPDIR/.DirIcon"
+
+        cat > "$APPDIR/promemoria.desktop" <<'DESKTOP_ENTRY'
+[Desktop Entry]
+Type=Application
+Name=Promemoria
+Comment=Promemoria e scadenze
+Exec=Promemoria
+Icon=promemoria
+Categories=Utility;
+Terminal=false
+DESKTOP_ENTRY
+
+        cat > "$APPDIR/AppRun" <<'APPRUN'
+#!/bin/sh
+HERE="$(dirname "$(readlink -f "$0")")"
+exec "$HERE/usr/bin/Promemoria" "$@"
+APPRUN
+        chmod +x "$APPDIR/AppRun"
+
+        echo "[INFO] Creazione AppImage..."
+        APPIMAGE_EXTRACT_AND_RUN=1 "$APPIMAGETOOL" "$APPDIR" "$ARTIFACT" >/dev/null
         ;;
     clean)
         echo "[INFO] Pulizia progetto..."
@@ -60,16 +114,16 @@ case "$BUILD_TYPE" in
         ;;
     *)
         echo "[ERRORE] Build type non valido: '$BUILD_TYPE'"
-        echo "         Uso: $0 [debug|release|clean]"
+        echo "         Uso: $0 [debug|release|desktop|clean]"
         exit 1
         ;;
 esac
 
-if [ -f "$APK_PATH" ]; then
+if [ -f "$ARTIFACT" ]; then
     echo ""
     echo "[OK] Build completata con successo!"
-    echo "     APK: $PROJECT_DIR/$APK_PATH"
+    echo "     Artefatto: $PROJECT_DIR/$ARTIFACT"
 else
-    echo "[ERRORE] APK non trovato. Controlla i log sopra."
+    echo "[ERRORE] Artefatto non trovato. Controlla i log sopra."
     exit 1
 fi
