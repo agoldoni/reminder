@@ -32,10 +32,24 @@ class MainActivity : ComponentActivity() {
      * Il telefono sincronizza qui, al rientro in primo piano, perché è l'unico momento in cui
      * può: Android non lascia tenere un socket in ascolto ad app chiusa. Se la sincronizzazione è
      * spenta o non c'è nessun dispositivo associato, `syncNow()` non fa nulla.
+     *
+     * Per la stessa ragione la web app apre qui la sua porta. A interruttore spento non fa nulla.
      */
     override fun onStart() {
         super.onStart()
         lifecycleScope.launch { appContainer.sync.syncNow() }
+        appContainer.web.onForeground()
+    }
+
+    /**
+     * Uscendo dal primo piano la porta si chiude, ma **l'interruttore e il token restano**: questo
+     * scatta anche a ogni cambio di configurazione — la rotazione dello schermo, prima di tutte —
+     * e rigenerare il token qui vorrebbe dire invalidare a ogni rotazione l'indirizzo che l'utente
+     * ha appena digitato sull'altro dispositivo.
+     */
+    override fun onStop() {
+        super.onStop()
+        appContainer.web.onBackground()
     }
 
     /** Il permesso serve a tutta l'app, non alla sola schermata di modifica: si chiede all'avvio. */

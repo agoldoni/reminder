@@ -50,6 +50,7 @@ import it.agoldoni.reminder.sync.DiscoveryStatus
 import it.agoldoni.reminder.sync.PairedPeer
 import it.agoldoni.reminder.sync.PeerSource
 import it.agoldoni.reminder.sync.SYNC_PORT
+import it.agoldoni.reminder.ui.web.SezioneWebApp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -65,6 +66,7 @@ fun SyncScreen(
     val message by viewModel.message.collectAsState()
 
     var peerDaDissociare by remember { mutableStateOf<PairedPeer?>(null) }
+    var mostraMessaggio by remember { mutableStateOf<String?>(null) }
     var mostraInserimentoManuale by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -81,6 +83,13 @@ fun SyncScreen(
         message?.let {
             snackbarHostState.showSnackbar(it)
             viewModel.consumaMessaggio()
+        }
+    }
+
+    LaunchedEffect(mostraMessaggio) {
+        mostraMessaggio?.let {
+            snackbarHostState.showSnackbar(it)
+            mostraMessaggio = null
         }
     }
 
@@ -166,6 +175,11 @@ fun SyncScreen(
                     messaggio = status.lastMessage
                 )
             }
+
+            // La web app locale sta qui perché è la stessa materia: questo dispositivo, la rete
+            // che lo circonda e chi lo può raggiungere. La sezione si nasconde da sé sulle
+            // piattaforme dove non è cablata.
+            item { SezioneWebApp(onMessaggio = { messaggio -> mostraMessaggio = messaggio }) }
 
             item { Intestazione("Dispositivi associati") }
             if (paired.isEmpty()) {
