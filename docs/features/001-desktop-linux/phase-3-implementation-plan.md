@@ -359,7 +359,7 @@ piattaforma), **UI**, **Test**, **Doc**.
 | T-27 | ✅ **fatto** — 10 test: struttura ODS (mimetype STORED per primo, manifest, contenuto), escape XML e le maschere di data | Test | 1,0 | T-15, T-23 |
 | T-28 | ✅ **fatto** — 13 test: autostart, istanza singola e scheduler desktop (scadenza, annullamento, riprogrammazione, bootstrap, azioni Completa e Posticipa) con tempo virtuale | Test | 1,0 | T-14, T-23 |
 | T-29 | Test di integrazione: due istanze desktop che si scoprono, si associano e convergono | Test | 1,5 | T-21 |
-| T-30 | ⏳ **parziale (0,8 di 1,0)** — su Redmi Note 7 + desktop: migrazione dei dati reali, associazione con confronto a vista in **entrambe** le direzioni (telefono→PC via `adb reverse`; **PC→telefono sulla rete vera**, dopo aver reso il telefono capace di ascoltare a schermata aperta), sincronizzazione nei due versi, idempotenza verificata sul campo (nuova associazione, watermark azzerato, eventi rispediti, **nessun duplicato**). Restano: scoperta mDNS telefono ↔ PC — impossibile qui, i due sono su sottoreti diverse — e i casi offline e conflitto | Test | 1,0 | T-22 |
+| T-30 | ⏳ **parziale (0,9 di 1,0)** — su Redmi Note 7 + desktop: migrazioni fino alla v5 sui dati reali, associazione con confronto a vista in **entrambe** le direzioni (telefono→PC via `adb reverse`; **PC→telefono sulla rete vera**), sincronizzazione nei due versi, idempotenza sul campo (nuova associazione, watermark azzerato, eventi rispediti, **nessun duplicato**), e il giro rifatto dopo le correzioni: porta dichiarata salvata al posto di quella effimera, `lastContactAt` in ora locale coerente fra riepilogo e peer, indirizzo proprio mostrato su entrambe le piattaforme. Restano: scoperta mDNS telefono ↔ PC — impossibile qui, i due sono su sottoreti diverse — e i casi offline e conflitto | Test | 1,0 | T-22 |
 | T-31 | ✅ **fatto** — su device: avvio, creazione, allarme programmato e annullato, Fatti, eliminazione, dialog Info, aggiornamento in place dalla versione pre-KMP con dati conservati, export/share (ODS aperto in LibreOffice) e **snooze da notifica** (notifica puntuale, azione +5 min che riprogramma e chiude). La riprogrammazione al boot è coperta da un test strumentato: `BOOT_COMPLETED` è un broadcast protetto e resta verificabile solo con un riavvio vero | Test | 1,0 | T-21, T-24 |
 | T-32 | ⏳ **in corso (0,7 di 1,0)** — `README.md` e `CLAUDE.md` aggiornati a moduli, build desktop e AppImage; i requisiti di rete della sync restano da scrivere quando la tranche 2 esisterà | Doc | 1,0 | T-24 |
 | T-33 | Guida a pairing e rete + note di distribuzione AppImage | Doc | 1,0 | T-30 |
@@ -423,7 +423,7 @@ device o emulatore Android.
 | TC-08 | Unit | Scheduler desktop: scadenza futura programmata, scadenza passata → recupero all'avvio, snooze +5/+60 | Alta |
 | TC-09 | Unit | Autostart: creazione e rimozione del `.desktop`; secondo avvio che non duplica il processo | Media |
 | TC-10 | Integrazione | Due istanze desktop sulla stessa macchina: discovery → pairing → convergenza degli eventi | Alta |
-| TC-11 | ~ Manuale | Telefono ↔ desktop: creazione verificata in **entrambe** le direzioni (via `adb reverse`, non su rete vera); modifica e cancellazione restano da provare | Alta |
+| TC-11 | ~ Manuale | Telefono ↔ desktop: creazione verificata in **entrambe** le direzioni, la seconda su rete vera; modifica e cancellazione restano da provare | Alta |
 | TC-12 | Manuale | Modifiche offline su entrambi i lati, poi rientro in rete: convergenza senza perdite | Alta |
 | TC-13 | Manuale | Notifica desktop a finestra chiusa e ad app riavviata dopo la scadenza | Alta |
 | TC-14 | Manuale | Android: allarme, snooze da notifica, riavvio device, export/share, aggiornamento sopra l'installazione esistente con dati conservati | Alta |
@@ -431,10 +431,10 @@ device o emulatore Android.
 
 ### Definition of Done
 
-- [ ] Tutti i test unitari passano in locale (`commonTest`, `jvmSharedTest`, `desktopTest`).
+- [x] Tutti i test unitari passano in locale (`commonTest`, `jvmSharedTest`, `desktopTest`): 113 test.
 - [x] TC-06 eseguito con esito positivo (su JVM desktop, non su emulatore: vedi T-26).
 - [ ] TC-11 → TC-14 eseguiti manualmente e annotati nel documento di collaudo.
-- [ ] Nessuna eccezione non gestita nei log durante una sessione di sync completa.
+- [x] Nessuna eccezione non gestita nei log durante una sessione di sync completa (verificato in `logcat` sul telefono e nei log del desktop).
 - [ ] L'AppImage si avvia su una macchina pulita senza dipendenze aggiuntive.
 - [ ] `README.md` e `CLAUDE.md` aggiornati.
 - [ ] Build Android release firmata e installabile sopra la versione precedente.

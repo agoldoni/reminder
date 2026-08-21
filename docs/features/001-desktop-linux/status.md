@@ -201,10 +201,9 @@ Il dettaglio task per task è in [phase-3-implementation-plan.md](phase-3-implem
 
 ## Punti aperti
 
-1. **Il database reale non è ancora stato migrato.** Lo schema è ora alla **v4** e le migrazioni
-   non sono reversibili: prima di avviare per la prima volta la nuova versione va copiato
-   `~/.local/share/promemoria/reminder.db` (e il file `-wal`) e fatto un export ODS dal telefono.
-   Le migrazioni sono state provate su una copia del database reale, che è rimasto alla v2.
+1. **I database reali sono stati migrati alla v5** su entrambi i dispositivi, dopo aver preso i
+   backup in `~/promemoria-backup-2026-08-21/` (che sono della v2 e restano l'unica via di
+   ritorno: le migrazioni non sono reversibili).
 2. **`upsertFromRemote()` non c'è.** Il piano la elencava fra le modifiche al DAO di T-17, ma le
    sue semantiche *sono* la regola di merge: nasce in T-20 insieme ai test che la definiscono.
 3. **Riprogrammazione al boot su device reale**: `BOOT_COMPLETED` è un broadcast protetto e non
