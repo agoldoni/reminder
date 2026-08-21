@@ -268,10 +268,10 @@ socket server con l'app chiusa: il telefono sincronizza all'apertura e al rientr
 
 | Tabella/Tipo | Tipo modifica | Dettaglio |
 |---|---|---|
-| `events` | Modifica (schema v2 → v3) | `+uuid TEXT` (identità globale, indice unico), `+updatedAt INTEGER`, `+deleted INTEGER`, `+deletedAt INTEGER NULL`, `+origin TEXT`. `id` autoincrementale **resta**: è il requestCode dei `PendingIntent` e l'id delle notifiche |
+| `events` | Modifica (schema v2 → v3) | `+uuid TEXT` (identità globale, indice unico), `+updatedAt INTEGER`, `+deleted INTEGER`, `+deletedAt INTEGER NULL`, `+origin TEXT` (dispositivo di nascita, immutabile). `id` autoincrementale **resta**: è il requestCode dei `PendingIntent` e l'id delle notifiche |
 | `events` | Modifica semantica | `delete` diventa soft-delete; tutte le letture filtrano `deleted = 0`; ogni scrittura aggiorna `updatedAt` |
 | `peers` | Nuova | `deviceId`, `displayName`, `sharedSecret`, `lastHost`, `lastPort`, `pairedAt`, `lastSyncAt` |
-| `EventDao` | Modifica | nuove query `changedSince(millis)`, `getByUuid(uuid)`, `upsertFromRemote(...)` |
+| `EventDao` | Modifica | nuove query `changedSince(millis)`, `getByUuid(uuid)`; `upsertFromRemote(...)` arriva con T-20 insieme alla regola di merge |
 | Migrazione `MIGRATION_2_3` | Nuova | `ALTER TABLE` per le cinque colonne, popolamento `uuid` con `lower(hex(randomblob(...)))`, `updatedAt = dateTimeMillis` come valore iniziale |
 
 ### Protocollo di sincronizzazione (al posto delle API REST)
@@ -323,7 +323,7 @@ piattaforma), **UI**, **Test**, **Doc**.
 | T-14 | ✅ **fatto** — `Autostart` scrive/rimuove il `.desktop` XDG; il comando di avvio viene da `APPIMAGE`, e senza di esso la voce di menù non compare | Core | 0,5 | T-13 |
 | T-15 | ✅ **fatto** — `ExportTarget` per piattaforma e use case comune; `Exporter` restituisce `ByteArray` invece di scrivere su `OutputStream` | Core | 1,0 | T-09 |
 | T-16 | ✅ **fatto** — `FileDialog` nativo in modalità salvataggio; annullare non scrive nulla | UI | 0,5 | T-15 |
-| T-17 | Schema v3, `MIGRATION_2_3`, DAO con soft-delete e `updatedAt` | Core | 1,5 | T-08, T-04 |
+| T-17 | ✅ **fatto** — schema v3 (`uuid` con indice unico, `updatedAt`, `deleted`/`deletedAt`, `origin`), `migration2to3(deviceId)`, DAO con soft-delete e letture filtrate, `changedSince()`, `getByUuid()`, identità del dispositivo persistita per piattaforma. `upsertFromRemote()` è rinviata a T-20, dove la regola LWW che la definisce viene scritta e testata | Core | 1,5 | T-08, T-04 |
 | T-18 | Discovery mDNS: `NsdManager` su Android (con multicast lock), `jmdns` su desktop, fallback manuale host/porta | Core | 1,5 | T-17 |
 | T-19 | Pairing: codice di conferma, segreto condiviso, canale cifrato, tabella `peers` | Core | 2,5 | T-18 |
 | T-20 | `SyncProtocol` + `SyncEngine`: merge LWW, tombstone, watermark, idempotenza | Core | 3,0 | T-17 |
@@ -332,7 +332,7 @@ piattaforma), **UI**, **Test**, **Doc**.
 | T-23 | ✅ **fatto** — `commonTest`, `jvmSharedTest`, `desktopTest`, `desktopApp/src/test` e `androidInstrumentedTest`, quest'ultimo eseguito su emulatore | Test | 0,5 | T-02 |
 | T-24 | ✅ **fatto** — `./build.sh desktop` produce un AppImage da 69,6 MB: `createDistributable` + AppDir + `appimagetool`. Icona, `.desktop` e `AppRun` inclusi; `APPIMAGE` risulta valorizzato a runtime, quindi l'autostart funziona dall'AppImage | Infra | 2,5 | T-13 |
 | T-25 | Unit test: merge LWW, tombstone che non risorge, idempotenza, protocollo, pairing | Test | 2,5 | T-20, T-23 |
-| T-26 | Test di migrazione 2→3 con `MigrationTestHelper` | Test | 0,5 | T-17, T-23 |
+| T-26 | ✅ **fatto** — 4 test: eventi v2 conservati, colonne di sync popolate (uuid canonici e distinti, `updatedAt`, `origin`), indice unico attivo, tombstone invisibile all'app ma leggibile da `getByUuid`/`changedSince`. Girano in `desktopTest` su SQLite reale invece che su emulatore: aprire il database con `createAppDatabase` fa validare lo schema a Room, che è la garanzia che dava `MigrationTestHelper` | Test | 0,5 | T-17, T-23 |
 | T-27 | ✅ **fatto** — 10 test: struttura ODS (mimetype STORED per primo, manifest, contenuto), escape XML e le maschere di data | Test | 1,0 | T-15, T-23 |
 | T-28 | ✅ **fatto** — 13 test: autostart, istanza singola e scheduler desktop (scadenza, annullamento, riprogrammazione, bootstrap, azioni Completa e Posticipa) con tempo virtuale | Test | 1,0 | T-14, T-23 |
 | T-29 | Test di integrazione: due istanze desktop che si scoprono, si associano e convergono | Test | 1,5 | T-21 |
@@ -343,14 +343,14 @@ piattaforma), **UI**, **Test**, **Doc**.
 
 **Stima totale: 46,0 giorni/uomo** (46,5 iniziali − 0,5 di T-03, rimosso)
 **Breakdown:** Infra 7,5 gg · Core 20,5 gg · UI 7,0 gg · Test 9,0 gg · Doc 2,0 gg
-**Già completati:** 27,2 gg — **tranche 1 completa** salvo 0,3 gg di documentazione che dipende dalla sincronizzazione. **Restano 18,8 gg**, quasi tutti di tranche 2.
+**Già completati:** 29,2 gg — **tranche 1 completa** salvo 0,3 gg di documentazione che dipende dalla sincronizzazione; della tranche 2 sono chiusi lo schema v3 (T-17) e i suoi test di migrazione (T-26). **Restano 16,8 gg.**
 
 **Due tranche:**
 
 | Tranche | Contenuto | Task | Stima |
 |---|---|---|---:|
 | **1 — App desktop** | Tutto tranne la sincronizzazione: desktop completo, installabile, con notifiche, tray, autostart, export | T-01…T-16 (T-03 escluso), T-23, T-24, T-27, T-28, T-31, T-32 | **27,5 gg** (24,0 residui) |
-| **2 — Sincronizzazione** | Schema v3, discovery, pairing, replica, UI di stato, collaudo | T-17…T-22, T-25, T-26, T-29, T-30, T-33 | **18,5 gg** |
+| **2 — Sincronizzazione** | Schema v3, discovery, pairing, replica, UI di stato, collaudo | T-17…T-22, T-25, T-26, T-29, T-30, T-33 | **18,5 gg** (16,5 residui) |
 
 > **Stato al 2026-08-20:** completati T-01, T-02, T-04…T-09, T-11…T-14, la parte centrale di
 > T-10 e metà di T-28 (**18,5 gg**). L'app desktop si avvia, apre il database, mostra gli eventi,
@@ -395,7 +395,7 @@ device o emulatore Android.
 | TC-03 | Unit | Due `PUSH` identici consecutivi non duplicano eventi (idempotenza) | Alta |
 | TC-04 | Unit | Peer con versione di protocollo diversa viene rifiutato con errore esplicito | Alta |
 | TC-05 | Unit | Peer non associato rifiutato; codice di pairing errato rifiutato | Alta |
-| TC-06 | Strumentale | Migrazione 2→3: eventi v2 conservati, `uuid` popolati e univoci, `updatedAt` valorizzato | Alta |
+| TC-06 | ✅ Unit (JVM) | Migrazione 2→3: eventi v2 conservati, `uuid` popolati e univoci, `updatedAt` valorizzato | Alta |
 | TC-07 | Unit | Golden test ODS: `mimetype` STORED come primo entry, righe attese, filtro `OPEN_ONLY` | Media |
 | TC-08 | Unit | Scheduler desktop: scadenza futura programmata, scadenza passata → recupero all'avvio, snooze +5/+60 | Alta |
 | TC-09 | Unit | Autostart: creazione e rimozione del `.desktop`; secondo avvio che non duplica il processo | Media |
@@ -409,7 +409,7 @@ device o emulatore Android.
 ### Definition of Done
 
 - [ ] Tutti i test unitari passano in locale (`commonTest`, `jvmSharedTest`, `desktopTest`).
-- [ ] TC-06 eseguito su device o emulatore con esito positivo.
+- [x] TC-06 eseguito con esito positivo (su JVM desktop, non su emulatore: vedi T-26).
 - [ ] TC-11 → TC-14 eseguiti manualmente e annotati nel documento di collaudo.
 - [ ] Nessuna eccezione non gestita nei log durante una sessione di sync completa.
 - [ ] L'AppImage si avvia su una macchina pulita senza dipendenze aggiuntive.

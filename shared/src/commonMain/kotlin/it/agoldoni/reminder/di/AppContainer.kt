@@ -21,6 +21,8 @@ class AppContainer(
     val eventDao: EventDao,
     val alarmScheduler: AlarmScheduler,
     val appInfo: AppInfo,
+    /** Identità di questa installazione: marchia gli eventi creati qui. */
+    val deviceId: String,
     exporter: Exporter,
     exportTarget: ExportTarget
 ) {
@@ -36,6 +38,6 @@ class AppContainer(
 
     /** Factory dell'editor: l'id dell'evento arriva dalla rotta di navigazione. */
     fun eventEditViewModelFactory(eventId: Long): ViewModelProvider.Factory = viewModelFactory {
-        initializer { EventEditViewModel(eventDao, eventId, alarmScheduler) }
+        initializer { EventEditViewModel(eventDao, eventId, alarmScheduler, deviceId) }
     }
 }

@@ -57,7 +57,7 @@ class DesktopAlarmScheduler(
             NotificationAction.SNOOZE_LONG -> snooze(event, SNOOZE_LONG_MINUTES)
             NotificationAction.COMPLETE -> {
                 cancel(event.id)
-                dao.markCompleted(event.id)
+                dao.markCompleted(event.id, nowMillis())
             }
         }
     }

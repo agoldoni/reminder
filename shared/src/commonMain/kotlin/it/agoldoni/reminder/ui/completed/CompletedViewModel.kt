@@ -3,6 +3,7 @@ package it.agoldoni.reminder.ui.completed
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import it.agoldoni.reminder.platform.AlarmScheduler
+import it.agoldoni.reminder.platform.nowMillis
 import it.agoldoni.reminder.data.EventDao
 import it.agoldoni.reminder.data.EventEntity
 import kotlinx.coroutines.flow.SharingStarted
@@ -20,14 +21,14 @@ class CompletedViewModel(
 
     fun restore(event: EventEntity) {
         viewModelScope.launch {
-            dao.markActive(event.id)
+            dao.markActive(event.id, nowMillis())
             alarmScheduler.schedule(event)
         }
     }
 
     fun delete(event: EventEntity) {
         viewModelScope.launch {
-            dao.delete(event)
+            dao.softDelete(event.id, nowMillis())
         }
     }
 }

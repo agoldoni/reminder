@@ -3,6 +3,7 @@ package it.agoldoni.reminder.ui.list
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import it.agoldoni.reminder.platform.AlarmScheduler
+import it.agoldoni.reminder.platform.nowMillis
 import it.agoldoni.reminder.data.EventDao
 import it.agoldoni.reminder.data.EventEntity
 import it.agoldoni.reminder.export.EmptyExportException
@@ -29,14 +30,14 @@ class EventListViewModel(
 
     fun delete(event: EventEntity) {
         viewModelScope.launch {
-            dao.delete(event)
+            dao.softDelete(event.id, nowMillis())
             alarmScheduler.cancel(event.id)
         }
     }
 
     fun markCompleted(event: EventEntity) {
         viewModelScope.launch {
-            dao.markCompleted(event.id)
+            dao.markCompleted(event.id, nowMillis())
             alarmScheduler.cancel(event.id)
         }
     }

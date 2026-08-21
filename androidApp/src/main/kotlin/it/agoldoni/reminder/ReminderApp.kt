@@ -9,6 +9,7 @@ import it.agoldoni.reminder.platform.AndroidAlarmScheduler
 import it.agoldoni.reminder.platform.AndroidAppContainer
 import it.agoldoni.reminder.platform.AppInfo
 import it.agoldoni.reminder.platform.createAppDatabase
+import it.agoldoni.reminder.platform.localDeviceId
 
 class ReminderApp : Application() {
 
@@ -17,10 +18,12 @@ class ReminderApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        val database = createAppDatabase(this)
+        val deviceId = localDeviceId(this)
+        val database = createAppDatabase(this, deviceId)
         container = AppContainer(
             eventDao = database.eventDao(),
             alarmScheduler = AndroidAlarmScheduler(this),
+            deviceId = deviceId,
             appInfo = AppInfo(
                 author = BuildConfig.APP_AUTHOR,
                 version = BuildConfig.VERSION_NAME,

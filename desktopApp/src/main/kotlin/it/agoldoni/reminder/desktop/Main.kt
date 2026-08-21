@@ -20,6 +20,7 @@ import it.agoldoni.reminder.platform.DesktopAlarmScheduler
 import it.agoldoni.reminder.platform.ReminderRoot
 import it.agoldoni.reminder.platform.createAppDatabase
 import it.agoldoni.reminder.platform.formatDateTime
+import it.agoldoni.reminder.platform.localDeviceId
 import it.agoldoni.reminder.platform.nowMillis
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,7 +36,8 @@ fun main() {
         return
     }
 
-    val database = createAppDatabase()
+    val deviceId = localDeviceId()
+    val database = createAppDatabase(deviceId = deviceId)
     val eventDao = database.eventDao()
     val alarmScheduler = DesktopAlarmScheduler(eventDao)
     alarmScheduler.bootstrap()
@@ -43,6 +45,7 @@ fun main() {
     val container = AppContainer(
         eventDao = eventDao,
         alarmScheduler = alarmScheduler,
+        deviceId = deviceId,
         appInfo = AppInfo(
             author = "Alberto Goldoni",
             version = "1.0",

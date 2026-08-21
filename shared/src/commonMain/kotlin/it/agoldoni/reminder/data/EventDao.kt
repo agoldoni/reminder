@@ -1,22 +1,31 @@
 package it.agoldoni.reminder.data
 
 import androidx.room.Dao
-import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
+/**
+ * Dallo schema v3 la cancellazione è logica: le letture dell'app escludono i tombstone
+ * (`deleted = 0`), mentre la sincronizzazione li vede tramite [changedSince] e [getByUuid].
+ * Ogni scrittura riceve l'istante da registrare in `updatedAt`: il clock è del chiamante,
+ * così i test possono lavorare a tempo virtuale.
+ */
 @Dao
 interface EventDao {
-    @Query("SELECT * FROM events WHERE completed = 0 ORDER BY dateTimeMillis ASC")
+    @Query("SELECT * FROM events WHERE deleted = 0 AND completed = 0 ORDER BY dateTimeMillis ASC")
     fun getActiveSortedAsc(): Flow<List<EventEntity>>
 
-    @Query("SELECT * FROM events WHERE completed = 1 ORDER BY dateTimeMillis DESC")
+    @Query("SELECT * FROM events WHERE deleted = 0 AND completed = 1 ORDER BY dateTimeMillis DESC")
     fun getCompletedSortedDesc(): Flow<List<EventEntity>>
 
-    @Query("SELECT * FROM events WHERE id = :id")
+    @Query("SELECT * FROM events WHERE deleted = 0 AND id = :id")
     suspend fun getById(id: Long): EventEntity?
+
+    /** Include i tombstone: la sincronizzazione deve poter riconoscere ciò che è stato cancellato. */
+    @Query("SELECT * FROM events WHERE uuid = :uuid")
+    suspend fun getByUuid(uuid: String): EventEntity?
 
     @Insert
     suspend fun insert(event: EventEntity): Long
@@ -24,24 +33,32 @@ interface EventDao {
     @Update
     suspend fun update(event: EventEntity)
 
-    @Delete
-    suspend fun delete(event: EventEntity)
+    /** Cancellazione logica: la riga resta come tombstone finché non è stata propagata ai peer. */
+    @Query("UPDATE events SET deleted = 1, deletedAt = :nowMillis, updatedAt = :nowMillis WHERE id = :id")
+    suspend fun softDelete(id: Long, nowMillis: Long)
 
-    @Query("UPDATE events SET completed = 1 WHERE id = :id")
-    suspend fun markCompleted(id: Long)
+    @Query("UPDATE events SET completed = 1, updatedAt = :nowMillis WHERE id = :id")
+    suspend fun markCompleted(id: Long, nowMillis: Long)
 
-    @Query("UPDATE events SET completed = 0 WHERE id = :id")
-    suspend fun markActive(id: Long)
+    @Query("UPDATE events SET completed = 0, updatedAt = :nowMillis WHERE id = :id")
+    suspend fun markActive(id: Long, nowMillis: Long)
 
-    @Query("SELECT * FROM events WHERE completed = 0 AND dateTimeMillis - advanceMinutes * 60000 > :nowMillis")
+    @Query("SELECT * FROM events WHERE deleted = 0 AND completed = 0 AND dateTimeMillis - advanceMinutes * 60000 > :nowMillis")
     suspend fun getFutureEvents(nowMillis: Long): List<EventEntity>
 
-    @Query("SELECT * FROM events WHERE completed = 0 AND dateTimeMillis - advanceMinutes * 60000 <= :nowMillis ORDER BY dateTimeMillis ASC")
+    @Query("SELECT * FROM events WHERE deleted = 0 AND completed = 0 AND dateTimeMillis - advanceMinutes * 60000 <= :nowMillis ORDER BY dateTimeMillis ASC")
     suspend fun getOverdueEvents(nowMillis: Long): List<EventEntity>
 
-    @Query("SELECT * FROM events ORDER BY dateTimeMillis ASC")
+    @Query("SELECT * FROM events WHERE deleted = 0 ORDER BY dateTimeMillis ASC")
     suspend fun getAll(): List<EventEntity>
 
-    @Query("SELECT * FROM events WHERE completed = 0 ORDER BY dateTimeMillis ASC")
+    @Query("SELECT * FROM events WHERE deleted = 0 AND completed = 0 ORDER BY dateTimeMillis ASC")
     suspend fun getAllOpen(): List<EventEntity>
+
+    /**
+     * Tutto ciò che è cambiato dopo [sinceMillis], tombstone compresi: è la sorgente del `PUSH`.
+     * L'ordine per `updatedAt` permette di avanzare il watermark man mano che si invia.
+     */
+    @Query("SELECT * FROM events WHERE updatedAt > :sinceMillis ORDER BY updatedAt ASC")
+    suspend fun changedSince(sinceMillis: Long): List<EventEntity>
 }

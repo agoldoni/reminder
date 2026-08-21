@@ -15,8 +15,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Release signing requires env vars: `KEYSTORE_FILE` (default `~/.android/release-key.jks`), `KEYSTORE_PASSWORD`, `KEY_ALIAS` (default `release`), `KEY_PASSWORD` (defaults to `KEYSTORE_PASSWORD` when unset).
 
-Tests live in `shared/src/jvmSharedTest` (ODS export, date helpers) and `desktopApp/src/test`
-(autostart, single instance). There is no Android instrumented test source set yet.
+Tests live in `shared/src/jvmSharedTest` (ODS export, date helpers), `shared/src/desktopTest`
+(scheduler desktop, migrazione 2→3), `desktopApp/src/test` (autostart, single instance) e
+`shared/src/androidInstrumentedTest` (riprogrammazione al boot, richiede emulatore).
 
 ## Architecture
 
@@ -32,7 +33,8 @@ target JVM, dove `java.*` è disponibile — `OdsExporter` e le date stanno qui)
 `dependsOn` manuale non è ammesso.
 
 **Layers:**
-- **`data/`** — Room KMP (`reminder.db`), single entity `EventEntity` with DAO. Schema is at version 2; migrations live in `AppDatabase.Companion` and use `SQLiteConnection`, not `SupportSQLiteDatabase`. `AppDatabase` needs `@ConstructedBy` plus the `expect object AppDatabaseConstructor`. Driver: `AndroidSQLiteDriver` su Android, `BundledSQLiteDriver` su desktop (dove `sqlite-bundled` è dichiarato solo in `desktopMain`, per non appesantire l'APK). Schema esportato in `shared/schemas/`.
+- **`data/`** — Room KMP (`reminder.db`), single entity `EventEntity` with DAO. Schema is at version 3; migrations live in `AppDatabase.Companion` and use `SQLiteConnection`, not `SupportSQLiteDatabase`. `MIGRATION_1_2` è un `object`, mentre la 2→3 è la funzione `migration2to3(deviceId)`: serve l'identità del dispositivo per popolare `origin` delle righe preesistenti. `AppDatabase` needs `@ConstructedBy` plus the `expect object AppDatabaseConstructor`. Driver: `AndroidSQLiteDriver` su Android, `BundledSQLiteDriver` su desktop (dove `sqlite-bundled` è dichiarato solo in `desktopMain`, per non appesantire l'APK). Schema esportato in `shared/schemas/`.
+  Dalla v3 l'entità porta i campi della sincronizzazione: `uuid` (identità globale, indice unico), `updatedAt`, `deleted`/`deletedAt` (tombstone) e `origin` (dispositivo di nascita, immutabile). `id` resta la chiave primaria perché è il requestCode dei `PendingIntent`. **La cancellazione è logica**: le letture dell'app filtrano `deleted = 0`, `changedSince()` e `getByUuid()` vedono anche i tombstone. Ogni mutazione riceve l'istante da scrivere in `updatedAt` come parametro (`softDelete(id, nowMillis)`, `markCompleted(id, nowMillis)`, …): il clock è del chiamante, così i test lavorano a tempo virtuale. Chi modifica un evento deve partire dalla riga esistente e usare `copy()`, mai ricostruire l'entità da zero: rigenererebbe `uuid` e perderebbe l'identità vista dagli altri dispositivi.
 - **`di/`** — `AppContainer`, container scritto a mano (niente Hilt: non funziona in KMP). Le implementazioni di piattaforma vengono costruite dal modulo applicativo e passate al container; le schermate lo raggiungono via `LocalAppContainer`.
 - **`platform/`** — `expect`/interfacce per ciò che cambia fra piattaforme: `AlarmScheduler`, date, colori dinamici, `AppInfo`, `ExportTarget`.
 - **`ui/`** — Compose screens with per-screen ViewModels injected via Hilt. Navigation via `NavHost` with string routes: `list`, `edit/{eventId}` (0 = new), `completed`.
@@ -44,6 +46,7 @@ target JVM, dove `java.*` è disponibile — `OdsExporter` e le date stanno qui)
 - Notifiche: `notify-send` (libnotify ≥ 0.8) con azioni `-A`; l'azione scelta arriva su stdout.
 - `kotlinx-coroutines-swing` è obbligatoria: senza `Dispatchers.Main` sulla JVM, `viewModelScope` non parte e la UI resta vuota senza errori.
 - Database in `~/.local/share/promemoria/` (XDG), autostart in `~/.config/autostart/promemoria.desktop`.
+- Identità del dispositivo: file `device-id` accanto al database su desktop, `SharedPreferences` su Android (`localDeviceId()` in entrambi i `platform/`).
 
 **Key conventions:**
 - UI language is Italian throughout (labels, messages, date formatting).

@@ -13,7 +13,8 @@ import kotlinx.coroutines.launch
 class EventEditViewModel(
     private val dao: EventDao,
     val eventId: Long,
-    private val alarmScheduler: AlarmScheduler
+    private val alarmScheduler: AlarmScheduler,
+    private val deviceId: String
 ) : ViewModel() {
 
     private val _title = MutableStateFlow("")
@@ -31,10 +32,17 @@ class EventEditViewModel(
     private val _saved = MutableStateFlow(false)
     val saved = _saved.asStateFlow()
 
+    /**
+     * Riga di partenza in modifica. Il salvataggio ci ricopia sopra i campi del modulo invece di
+     * costruire un'entità nuova: uuid, origine e stato di completamento appartengono all'evento,
+     * non alla schermata, e rigenerarli spezzerebbe l'identità vista dagli altri dispositivi.
+     */
+    private var existing: EventEntity? = null
+
     init {
         if (eventId != 0L) {
             viewModelScope.launch {
-                dao.getById(eventId)?.let { event ->
+                load()?.let { event ->
                     _title.value = event.title
                     _description.value = event.description ?: ""
                     _dateTimeMillis.value = event.dateTimeMillis
@@ -44,6 +52,9 @@ class EventEditViewModel(
         }
     }
 
+    private suspend fun load(): EventEntity? =
+        existing ?: dao.getById(eventId)?.also { existing = it }
+
     fun setTitle(value: String) { _title.value = value }
     fun setDescription(value: String) { _description.value = value }
     fun setDateTimeMillis(value: Long) { _dateTimeMillis.value = value }
@@ -52,20 +63,28 @@ class EventEditViewModel(
     fun save() {
         if (_title.value.isBlank()) return
         viewModelScope.launch {
-            val event = EventEntity(
-                id = eventId,
+            // Rilettura anche al salvataggio: se l'utente salva prima che il caricamento iniziale
+            // sia arrivato, `existing` è ancora nullo e si perderebbe l'identità della riga.
+            val base = if (eventId == 0L) null else load()
+            val event = (base ?: EventEntity(
+                title = _title.value,
+                dateTimeMillis = _dateTimeMillis.value,
+                origin = deviceId
+            )).copy(
                 title = _title.value.trim(),
                 description = _description.value.trim().ifBlank { null },
                 dateTimeMillis = _dateTimeMillis.value,
-                advanceMinutes = _advanceMinutes.value
+                advanceMinutes = _advanceMinutes.value,
+                updatedAt = nowMillis()
             )
-            val savedEvent = if (eventId == 0L) {
+            val savedEvent = if (base == null) {
                 val newId = dao.insert(event)
                 event.copy(id = newId)
             } else {
                 dao.update(event)
                 event
             }
+            existing = savedEvent
             alarmScheduler.schedule(savedEvent)
             _saved.value = true
         }
