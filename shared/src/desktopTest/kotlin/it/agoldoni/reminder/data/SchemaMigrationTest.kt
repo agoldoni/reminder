@@ -3,6 +3,7 @@ package it.agoldoni.reminder.data
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import androidx.sqlite.execSQL
 import it.agoldoni.reminder.platform.createAppDatabase
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import java.io.File
 import kotlin.test.AfterTest
@@ -15,14 +16,14 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * TC-06 — migrazione 2 → 3 su SQLite vero. Gira sulla JVM desktop invece che su emulatore:
+ * TC-06 — migrazioni di schema su SQLite vero. Gira sulla JVM desktop invece che su emulatore:
  * il driver bundled e quello di sistema eseguono lo stesso SQL, e i test strumentati richiedono
  * un emulatore che qui non è sempre disponibile.
  *
  * Aprire il database con [createAppDatabase] non verifica solo i dati: Room confronta lo schema
  * risultante con quello atteso e fallisce se la migrazione non lo ha ricostruito esattamente.
  */
-class Migration2To3Test {
+class SchemaMigrationTest {
 
     private lateinit var directory: File
     private lateinit var dbFile: File
@@ -140,6 +141,65 @@ class Migration2To3Test {
                     )
                 )
             }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun `la migrazione 3 a 4 aggiunge i dispositivi associati senza toccare gli eventi`() = runTest {
+        createV2Database("INSERT INTO events VALUES (1, 'Dentista', NULL, 1800000000000, 30, 0)")
+
+        val database = createAppDatabase(dbFile, deviceId)
+        try {
+            val dao = database.eventDao()
+            assertEquals(1, dao.getAll().size, "la tabella nuova non tocca gli eventi")
+
+            // Il database parte senza associazioni: finché la tabella è vuota la
+            // sincronizzazione non ha nessuno con cui parlare e l'app si comporta come prima.
+            val peers = database.peerDao()
+            assertTrue(peers.getAll().first().isEmpty())
+
+            peers.upsert(
+                PeerEntity(
+                    deviceId = "id-computer",
+                    displayName = "Computer",
+                    sharedSecret = "ab".repeat(32),
+                    pairedAt = 1_800_000_000_000L
+                )
+            )
+            val salvato = assertNotNull(peers.getById("id-computer"))
+            assertEquals("Computer", salvato.displayName)
+            assertEquals(0L, salvato.lastSyncAt)
+            assertNull(salvato.lastHost)
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun `dissociare elimina le credenziali`() = runTest {
+        createV2Database()
+
+        val database = createAppDatabase(dbFile, deviceId)
+        try {
+            val peers = database.peerDao()
+            peers.upsert(
+                PeerEntity(
+                    deviceId = "id-computer",
+                    displayName = "Computer",
+                    sharedSecret = "ab".repeat(32),
+                    pairedAt = 1_800_000_000_000L
+                )
+            )
+            peers.rememberAddress("id-computer", "192.168.1.10", 8765)
+
+            peers.delete("id-computer")
+
+            // Senza la riga il peer torna sconosciuto: è ciò che fa rifiutare le sessioni
+            // successive, e il segreto non resta da nessuna parte.
+            assertNull(peers.getById("id-computer"))
+            assertTrue(peers.getAll().first().isEmpty())
         } finally {
             database.close()
         }

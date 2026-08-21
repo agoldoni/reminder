@@ -1,7 +1,7 @@
 # Stato del lavoro — port desktop Linux
 
 **Aggiornato:** 2026-08-21
-**Branch:** `feature/desktop-linux` (11 commit, non ancora unito in `main`)
+**Branch:** `feature/desktop-linux` (12 commit, non ancora unito in `main`)
 
 ---
 
@@ -26,13 +26,15 @@ Compose Multiplatform, ed è distribuibile come AppImage.
 | Schema v3 e migrazione 2→3 (T-17) | ✅ fatto, verificato anche su una copia del database reale |
 | Test di migrazione (T-26) | ✅ 4 test in `desktopTest`, senza emulatore |
 | Discovery mDNS (T-18) | ✅ fatto, round-trip reale verificato su desktop e cablaggio verificato su emulatore |
-| Pairing, replica, UI (T-19…T-22) | ⏳ da fare |
+| Associazione e canale cifrato (T-19) | ✅ fatto, schema v4 con la tabella `peers` |
+| Replica, integrazione, UI (T-20…T-22) | ⏳ da fare |
 
-**Avanzamento:** 30,7 gg completati su 46,0 stimati. Restano **15,3 gg**, tutti di tranche 2.
+**Avanzamento:** 33,2 gg completati su 46,0 stimati. Restano **12,8 gg**, tutti di tranche 2.
 
-**40 test automatici** (prima non ce n'erano): export ODS, formattazione date, scheduler desktop,
-autostart, istanza singola, migrazione 2→3, elenco dei dispositivi, round-trip mDNS reale;
-strumentati su emulatore la riprogrammazione al boot e il cablaggio di `NsdDiscovery`.
+**61 test automatici** (prima non ce n'erano): export ODS, formattazione date, scheduler desktop,
+autostart, istanza singola, migrazioni di schema, elenco dei dispositivi, round-trip mDNS reale,
+primitive crittografiche, associazione e sessione cifrata; strumentati su emulatore la
+riprogrammazione al boot e il cablaggio di `NsdDiscovery`.
 
 ## Come si lavora
 
@@ -79,20 +81,44 @@ ANDROID_SERIAL=emulator-5554 ./gradlew :shared:connectedDebugAndroidTest   # tes
 - Nulla di tutto questo è ancora collegato all'app: `Discovery` non è nell'`AppContainer` e non
   c'è UI. Il cablaggio arriva con T-21, l'interfaccia con T-22.
 
+## Che cosa c'è nell'associazione
+
+- **Il codice si confronta a vista, non si digita.** Entrambi i lati derivano dallo scambio lo
+  stesso codice a sei cifre e l'utente conferma di vederlo uguale sui due schermi. È uno
+  **scostamento voluto** dal piano, che diceva «mostrato da uno e confermato dall'altro»: un
+  codice digitato, sopra uno scambio ECDH, è forzabile offline in millisecondi da chi si mette in
+  mezzo. Il motivo per esteso è in §5 del piano. **Ha una conseguenza su T-22**: la schermata
+  mostra un codice e chiede «vedi questo stesso numero sull'altro dispositivo?», non un campo in
+  cui digitarlo.
+- Curva **P-256**, non X25519: su Android quest'ultima arriva con l'API 31 e il minimo qui è 26.
+  Le chiavi dello scambio sono effimere — a sopravvivere è solo il segreto derivato.
+- **HKDF-SHA256 è scritto a mano** (non c'è in JCA) e verificato contro tre vettori della
+  RFC 5869: una derivazione sbagliata non fallisce rumorosamente, dà solo chiavi diverse.
+- Il canale è AES-256-GCM con **una chiave per direzione** — due contatori sulla stessa chiave
+  produrrebbero nonce ripetuti, che in GCM azzerano ogni garanzia — e il numero di sequenza come
+  dato autenticato, così un frame ripetuto o spostato non si decifra.
+- Un dispositivo non associato viene rifiutato **prima** di ricevere i nonce: a uno sconosciuto
+  non si dà nemmeno materiale su cui lavorare.
+- Il `sharedSecret` sta **in chiaro** nella tabella `peers`: è protetto dai permessi del file
+  (sandbox dell'app su Android, cartella dell'utente su desktop) e non da una cifratura a riposo,
+  che richiederebbe un portachiavi diverso per ogni piattaforma.
+- Come per la scoperta, **nulla è ancora collegato all'app**: `peerDao` non è nell'`AppContainer`,
+  non c'è socket in ascolto e non c'è UI. Il server e il cablaggio sono T-21, l'interfaccia T-22.
+
 ## Prossimo passo
 
-**T-19 — pairing**: codice di conferma sui due lati, segreto condiviso, canale cifrato, tabella
-`peers`. Poi T-20 (motore di replica, con `upsertFromRemote` e la regola LWW) → T-21
-(integrazione) → T-22 (UI stato sync), con i test T-25, T-29 e T-30 a seguire.
+**T-20 — `SyncProtocol` + `SyncEngine`**: merge LWW, tombstone, watermark, idempotenza, e con essi
+`upsertFromRemote()`. Poi T-21 (integrazione trasporto ↔ engine, con il socket in ascolto sul
+desktop) → T-22 (UI di stato e associazione), con i test T-25, T-29 e T-30 a seguire.
 
 Il dettaglio task per task è in [phase-3-implementation-plan.md](phase-3-implementation-plan.md).
 
 ## Punti aperti
 
-1. **Il database reale non è ancora stato migrato.** La v3 non è reversibile: prima di avviare per
-   la prima volta la nuova versione va copiato `~/.local/share/promemoria/reminder.db` (e il file
-   `-wal`) e fatto un export ODS dal telefono. La migrazione è stata provata su una copia del
-   database reale, che è rimasto alla v2.
+1. **Il database reale non è ancora stato migrato.** Lo schema è ora alla **v4** e le migrazioni
+   non sono reversibili: prima di avviare per la prima volta la nuova versione va copiato
+   `~/.local/share/promemoria/reminder.db` (e il file `-wal`) e fatto un export ODS dal telefono.
+   Le migrazioni sono state provate su una copia del database reale, che è rimasto alla v2.
 2. **`upsertFromRemote()` non c'è.** Il piano la elencava fra le modifiche al DAO di T-17, ma le
    sue semantiche *sono* la regola di merge: nasce in T-20 insieme ai test che la definiscono.
 3. **Riprogrammazione al boot su device reale**: `BOOT_COMPLETED` è un broadcast protetto e non

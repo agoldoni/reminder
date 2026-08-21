@@ -159,11 +159,14 @@ configurare indirizzi IP o porte.
 Come utente voglio autorizzare esplicitamente l'associazione con un codice di conferma per
 essere certo che nessun altro sulla rete legga o alteri i miei promemoria.
 
-- [ ] L'associazione richiede conferma su entrambi i lati tramite un codice mostrato da uno e
-      confermato dall'altro.
-- [ ] Un peer non associato che tenta di sincronizzare viene rifiutato.
-- [ ] Il traffico è cifrato: un terzo dispositivo sulla rete non legge i promemoria intercettando.
-- [ ] La dissociazione elimina le credenziali e interrompe le sincronizzazioni successive.
+- [~] L'associazione richiede conferma su entrambi i lati tramite un codice **mostrato da
+      entrambi e confrontato a vista** — vedi lo scostamento motivato in §5. *(meccanismo fatto e
+      testato; la schermata è T-22)*
+- [x] Un peer non associato che tenta di sincronizzare viene rifiutato, prima ancora di ricevere
+      materiale crittografico su cui lavorare.
+- [x] Il traffico è cifrato: un terzo dispositivo sulla rete non legge i promemoria intercettando
+      (verificato ispezionando i byte sul filo).
+- [x] La dissociazione elimina le credenziali e interrompe le sincronizzazioni successive.
 
 ### US-006 · Allineamento automatico delle modifiche
 **Priorità:** Must Have
@@ -270,7 +273,7 @@ socket server con l'app chiusa: il telefono sincronizza all'apertura e al rientr
 |---|---|---|
 | `events` | Modifica (schema v2 → v3) | `+uuid TEXT` (identità globale, indice unico), `+updatedAt INTEGER`, `+deleted INTEGER`, `+deletedAt INTEGER NULL`, `+origin TEXT` (dispositivo di nascita, immutabile). `id` autoincrementale **resta**: è il requestCode dei `PendingIntent` e l'id delle notifiche |
 | `events` | Modifica semantica | `delete` diventa soft-delete; tutte le letture filtrano `deleted = 0`; ogni scrittura aggiorna `updatedAt` |
-| `peers` | Nuova | `deviceId`, `displayName`, `sharedSecret`, `lastHost`, `lastPort`, `pairedAt`, `lastSyncAt` |
+| `peers` | Nuova (schema v3 → v4) | `deviceId` (chiave primaria: l'identità dichiarata dall'altro, stabile mentre l'IP cambia), `displayName`, `sharedSecret` (esadecimale, **in chiaro**: protetto dai permessi del file, non cifrato a riposo), `lastHost`, `lastPort`, `pairedAt`, `lastSyncAt` |
 | `EventDao` | Modifica | nuove query `changedSince(millis)`, `getByUuid(uuid)`; `upsertFromRemote(...)` arriva con T-20 insieme alla regola di merge |
 | Migrazione `MIGRATION_2_3` | Nuova | `ALTER TABLE` per le cinque colonne, popolamento `uuid` con `lower(hex(randomblob(...)))`, `updatedAt = dateTimeMillis` come valore iniziale |
 
@@ -279,7 +282,9 @@ socket server con l'app chiusa: il telefono sincronizza all'apertura e al rientr
 | Messaggio | Direzione | Descrizione | Richiede pairing |
 |---|---|---|---|
 | `HELLO` | ↔ | deviceId, nome, versione di protocollo | No |
-| `PAIR_REQUEST` / `PAIR_CONFIRM` | ↔ | scambio del codice di conferma e del segreto condiviso | No (è l'atto di associarsi) |
+| `PAIR_BEGIN` / `PAIR_KEY` | ↔ | scambio delle chiavi pubbliche effimere (ECDH P-256) | No (è l'atto di associarsi) |
+| `PAIR_CONFIRM` / `PAIR_DONE` | ↔ | prova incrociata di aver ricavato lo stesso segreto, dopo la conferma dell'utente | No |
+| `SESSION_BEGIN` / `SESSION_ACCEPT` / `SESSION_CONFIRM` | ↔ | nonce e autenticazione reciproca col segreto dell'associazione; da qui il canale è cifrato | Sì |
 | `PULL(since)` | → | richiesta degli eventi modificati dopo `since` | Sì |
 | `PUSH(events)` | → | invio degli eventi modificati localmente | Sì |
 | `ACK(highWatermark)` | ← | conferma e nuovo watermark | Sì |
@@ -288,11 +293,25 @@ Trasporto: socket TCP su canale cifrato con il segreto stabilito in fase di pair
 serializzazione `kotlinx.serialization`. Versione di protocollo esplicita nel primo messaggio:
 peer con versione incompatibile rifiutano invece di corrompere i dati.
 
+> **Scostamento sul modello di conferma (T-19), da rivedere se non convince.**
+> Il piano diceva «un codice mostrato da uno e confermato dall'altro», cioè un codice digitato.
+> Quel modello, sopra uno scambio ECDH, **non è sicuro**: chi si mette in mezzo negozia due
+> scambi, cattura la prova che dipende dal codice e ne prova offline tutti i milione di valori in
+> millisecondi. Renderlo sicuro richiede un PAKE vero (SPAKE2, J-PAKE), cioè molto più codice
+> crittografico — e una libreria in più nell'APK — di quanto ne meriti un'app personale.
+> L'implementazione usa invece il **confronto a vista**, lo stesso modello del pairing Bluetooth:
+> i due lati derivano dallo scambio lo **stesso** codice a sei cifre, lo mostrano entrambi, e
+> l'utente conferma su ciascuno di aver visto lo stesso numero. Chi è in mezzo produce due codici
+> diversi e ha una probabilità su un milione di indovinare. Il criterio di US-005 «conferma su
+> entrambi i lati» è soddisfatto — anzi la conferma è esplicita su entrambi invece che su uno.
+> **Conseguenza per T-22:** la schermata mostra un codice e chiede «vedi questo stesso numero
+> sull'altro dispositivo?», non un campo in cui digitarlo.
+
 ### Breaking changes
 
 | Componente | Tipo di breaking change | Piano di migrazione |
 |---|---|---|
-| Database `reminder.db` | Schema v2 → v3, **non reversibile**: una release precedente non apre un DB v3 | Migrazione automatica all'avvio; backup del file DB prima del primo avvio della versione nuova (vedi §9) |
+| Database `reminder.db` | Schema v2 → v4, **non reversibile**: una release precedente non apre un DB v3 | Migrazione automatica all'avvio; backup del file DB prima del primo avvio della versione nuova (vedi §9) |
 | `EventDao.delete()` | Da cancellazione fisica a soft-delete | 2 soli chiamanti: `EventListViewModel.delete`, `CompletedViewModel.delete` |
 | `ExportEventsUseCase.execute()` | Ritorna `Result<ExportedFile>` invece di `Result<Uri>` | Il consumo passa a `ExportTarget`; `ExportUiState` ed `EmptyExportException` invariati |
 | `AlarmScheduler` | Da `object` statico a interfaccia iniettata | 3 ViewModel + 2 receiver aggiornati contestualmente |
@@ -325,7 +344,7 @@ piattaforma), **UI**, **Test**, **Doc**.
 | T-16 | ✅ **fatto** — `FileDialog` nativo in modalità salvataggio; annullare non scrive nulla | UI | 0,5 | T-15 |
 | T-17 | ✅ **fatto** — schema v3 (`uuid` con indice unico, `updatedAt`, `deleted`/`deletedAt`, `origin`), `migration2to3(deviceId)`, DAO con soft-delete e letture filtrate, `changedSince()`, `getByUuid()`, identità del dispositivo persistita per piattaforma. `upsertFromRemote()` è rinviata a T-20, dove la regola LWW che la definisce viene scritta e testata | Core | 1,5 | T-08, T-04 |
 | T-18 | ✅ **fatto** — contratto `Discovery` in `commonMain` su `_promemoria-sync._tcp`, `NsdDiscovery` (multicast lock + risoluzioni serializzate), `JmdnsDiscovery` (indirizzo di sito esplicito), `PeerDirectory` che unisce trovati e digitati. 9 unit test + 1 round-trip mDNS reale su desktop + 1 strumentato sul cablaggio Android | Core | 1,5 | T-17 |
-| T-19 | Pairing: codice di conferma, segreto condiviso, canale cifrato, tabella `peers` | Core | 2,5 | T-18 |
+| T-19 | ✅ **fatto** — tabella `peers` (schema v4, `MIGRATION_3_4`), ECDH P-256 effimero, HKDF-SHA256 verificato su RFC 5869, associazione con codice **confrontato a vista** (vedi nota sotto), canale AES-256-GCM con chiavi direzionali e sequenza autenticata, rifiuto dei non associati e delle versioni incompatibili. 19 test | Core | 2,5 | T-18 |
 | T-20 | `SyncProtocol` + `SyncEngine`: merge LWW, tombstone, watermark, idempotenza | Core | 3,0 | T-17 |
 | T-21 | Integrazione trasporto ↔ engine: riprogrammazione allarmi, gestione errori, sync in foreground su Android | Core | 1,5 | T-19, T-20 |
 | T-22 | Schermata stato sincronizzazione: peer, ultimo sync, errori, sync manuale, dissociazione | UI | 2,0 | T-21 |
@@ -343,14 +362,14 @@ piattaforma), **UI**, **Test**, **Doc**.
 
 **Stima totale: 46,0 giorni/uomo** (46,5 iniziali − 0,5 di T-03, rimosso)
 **Breakdown:** Infra 7,5 gg · Core 20,5 gg · UI 7,0 gg · Test 9,0 gg · Doc 2,0 gg
-**Già completati:** 30,7 gg — **tranche 1 completa** salvo 0,3 gg di documentazione che dipende dalla sincronizzazione; della tranche 2 sono chiusi lo schema v3 (T-17), i suoi test di migrazione (T-26) e la scoperta dei dispositivi (T-18). **Restano 15,3 gg.**
+**Già completati:** 33,2 gg — **tranche 1 completa** salvo 0,3 gg di documentazione che dipende dalla sincronizzazione; della tranche 2 sono chiusi lo schema v3 (T-17), i test di migrazione (T-26), la scoperta dei dispositivi (T-18) e l'associazione con canale cifrato (T-19). **Restano 12,8 gg.**
 
 **Due tranche:**
 
 | Tranche | Contenuto | Task | Stima |
 |---|---|---|---:|
 | **1 — App desktop** | Tutto tranne la sincronizzazione: desktop completo, installabile, con notifiche, tray, autostart, export | T-01…T-16 (T-03 escluso), T-23, T-24, T-27, T-28, T-31, T-32 | **27,5 gg** (24,0 residui) |
-| **2 — Sincronizzazione** | Schema v3, discovery, pairing, replica, UI di stato, collaudo | T-17…T-22, T-25, T-26, T-29, T-30, T-33 | **18,5 gg** (15,0 residui) |
+| **2 — Sincronizzazione** | Schema v3, discovery, pairing, replica, UI di stato, collaudo | T-17…T-22, T-25, T-26, T-29, T-30, T-33 | **18,5 gg** (12,5 residui) |
 
 > **Stato al 2026-08-20:** completati T-01, T-02, T-04…T-09, T-11…T-14, la parte centrale di
 > T-10 e metà di T-28 (**18,5 gg**). L'app desktop si avvia, apre il database, mostra gli eventi,
@@ -393,8 +412,8 @@ device o emulatore Android.
 | TC-01 | Unit | Modifiche concorrenti allo stesso evento: entrambi i lati convergono sullo stesso stato (LWW) | Alta |
 | TC-02 | Unit | Evento cancellato su un lato non riappare dopo due cicli di sync | Alta |
 | TC-03 | Unit | Due `PUSH` identici consecutivi non duplicano eventi (idempotenza) | Alta |
-| TC-04 | Unit | Peer con versione di protocollo diversa viene rifiutato con errore esplicito | Alta |
-| TC-05 | Unit | Peer non associato rifiutato; codice di pairing errato rifiutato | Alta |
+| TC-04 | ✅ Unit | Peer con versione di protocollo diversa viene rifiutato con errore esplicito | Alta |
+| TC-05 | ✅ Unit | Peer non associato rifiutato; codice non confermato e segreto diverso rifiutati | Alta |
 | TC-06 | ✅ Unit (JVM) | Migrazione 2→3: eventi v2 conservati, `uuid` popolati e univoci, `updatedAt` valorizzato | Alta |
 | TC-07 | Unit | Golden test ODS: `mimetype` STORED come primo entry, righe attese, filtro `OPEN_ONLY` | Media |
 | TC-08 | Unit | Scheduler desktop: scadenza futura programmata, scadenza passata → recupero all'avvio, snooze +5/+60 | Alta |

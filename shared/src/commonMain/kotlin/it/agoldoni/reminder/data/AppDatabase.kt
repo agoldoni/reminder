@@ -8,10 +8,11 @@ import androidx.room.migration.Migration
 import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.execSQL
 
-@Database(entities = [EventEntity::class], version = 3, exportSchema = true)
+@Database(entities = [EventEntity::class, PeerEntity::class], version = 4, exportSchema = true)
 @ConstructedBy(AppDatabaseConstructor::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun eventDao(): EventDao
+    abstract fun peerDao(): PeerDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -58,6 +59,27 @@ abstract class AppDatabase : RoomDatabase() {
                 connection.execSQL("UPDATE events SET origin = '${deviceId.replace("'", "''")}'")
 
                 connection.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_events_uuid ON events (uuid)")
+            }
+        }
+
+        /**
+         * v3 → v4: la tabella dei dispositivi associati. Puramente additiva — gli eventi non si
+         * toccano — e a database nuovo resta vuota: senza associazioni la sincronizzazione non
+         * parte e l'app si comporta come prima.
+         */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `peers` (" +
+                        "`deviceId` TEXT NOT NULL, " +
+                        "`displayName` TEXT NOT NULL, " +
+                        "`sharedSecret` TEXT NOT NULL, " +
+                        "`lastHost` TEXT, " +
+                        "`lastPort` INTEGER, " +
+                        "`pairedAt` INTEGER NOT NULL, " +
+                        "`lastSyncAt` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`deviceId`))"
+                )
             }
         }
     }

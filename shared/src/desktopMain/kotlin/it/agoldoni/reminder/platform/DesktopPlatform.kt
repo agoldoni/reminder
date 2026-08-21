@@ -39,7 +39,11 @@ fun createAppDatabase(
     deviceId: String = localDeviceId()
 ): AppDatabase =
     Room.databaseBuilder<AppDatabase>(name = dbFile.absolutePath)
-        .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.migration2to3(deviceId))
+        .addMigrations(
+            AppDatabase.MIGRATION_1_2,
+            AppDatabase.migration2to3(deviceId),
+            AppDatabase.MIGRATION_3_4
+        )
         .setDriver(BundledSQLiteDriver())
         .setQueryCoroutineContext(Dispatchers.IO)
         .build()

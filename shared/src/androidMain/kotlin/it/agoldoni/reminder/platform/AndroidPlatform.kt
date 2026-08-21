@@ -17,7 +17,11 @@ fun createAppDatabase(context: Context, deviceId: String = localDeviceId(context
         context = context.applicationContext,
         name = context.getDatabasePath(DATABASE_NAME).absolutePath
     )
-        .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.migration2to3(deviceId))
+        .addMigrations(
+            AppDatabase.MIGRATION_1_2,
+            AppDatabase.migration2to3(deviceId),
+            AppDatabase.MIGRATION_3_4
+        )
         .setDriver(AndroidSQLiteDriver())
         .setQueryCoroutineContext(Dispatchers.IO)
         .build()
