@@ -69,9 +69,18 @@ class AndroidAppSettings(context: Context) : AppSettings {
         _syncEnabled.value = enabled
     }
 
+    private val _webEnabled = MutableStateFlow(prefs.getBoolean(WEB_ENABLED_KEY, false))
+    override val webEnabled: StateFlow<Boolean> = _webEnabled.asStateFlow()
+
+    override fun setWebEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(WEB_ENABLED_KEY, enabled).apply()
+        _webEnabled.value = enabled
+    }
+
     private companion object {
         const val SETTINGS_PREFS = "impostazioni"
         const val SYNC_ENABLED_KEY = "syncEnabled"
+        const val WEB_ENABLED_KEY = "webEnabled"
     }
 }
 

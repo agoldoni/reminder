@@ -25,6 +25,12 @@ private class FakeSettings(iniziale: Boolean = false) : AppSettings {
     override fun setSyncEnabled(enabled: Boolean) {
         _syncEnabled.value = enabled
     }
+
+    private val _webEnabled = MutableStateFlow(false)
+    override val webEnabled: StateFlow<Boolean> = _webEnabled.asStateFlow()
+    override fun setWebEnabled(enabled: Boolean) {
+        _webEnabled.value = enabled
+    }
 }
 
 class SyncServiceTest {

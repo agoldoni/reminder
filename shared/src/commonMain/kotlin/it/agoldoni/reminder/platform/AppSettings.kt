@@ -16,4 +16,17 @@ interface AppSettings {
     val syncEnabled: StateFlow<Boolean>
 
     fun setSyncEnabled(enabled: Boolean)
+
+    /**
+     * Interruttore della web app locale, **spento di default**, con la stessa disciplina di
+     * [syncEnabled]: finché è spento non si apre nessun socket e non si genera nessun token.
+     *
+     * È distinto da [syncEnabled] di proposito, anche se i due interruttori vivono sulla stessa
+     * schermata: la sincronizzazione parla con dispositivi già associati e riconosciuti, la web
+     * app espone i promemoria a chiunque sulla rete conosca il token. Sono due decisioni diverse
+     * e devono restare due decisioni diverse.
+     */
+    val webEnabled: StateFlow<Boolean>
+
+    fun setWebEnabled(enabled: Boolean)
 }

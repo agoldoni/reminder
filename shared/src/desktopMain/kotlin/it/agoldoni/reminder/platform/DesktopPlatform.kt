@@ -67,13 +67,32 @@ class DesktopAppSettings(
     override val syncEnabled: StateFlow<Boolean> = _syncEnabled.asStateFlow()
 
     override fun setSyncEnabled(enabled: Boolean) {
-        properties.setProperty(SYNC_ENABLED_KEY, enabled.toString())
+        salva(SYNC_ENABLED_KEY, enabled)
+        _syncEnabled.value = enabled
+    }
+
+    /**
+     * Persistito anche qui, benché su desktop la web app non sia ancora cablata: il contratto di
+     * [AppSettings] dice che le preferenze sopravvivono alla chiusura, e un flag che finge di
+     * salvarsi sarebbe una bugia che si scopre solo il giorno in cui il desktop la userà.
+     */
+    private val _webEnabled =
+        MutableStateFlow(properties.getProperty(WEB_ENABLED_KEY)?.toBoolean() ?: false)
+    override val webEnabled: StateFlow<Boolean> = _webEnabled.asStateFlow()
+
+    override fun setWebEnabled(enabled: Boolean) {
+        salva(WEB_ENABLED_KEY, enabled)
+        _webEnabled.value = enabled
+    }
+
+    private fun salva(chiave: String, valore: Boolean) {
+        properties.setProperty(chiave, valore.toString())
         file.parentFile?.mkdirs()
         file.outputStream().use { properties.store(it, "Promemoria") }
-        _syncEnabled.value = enabled
     }
 
     private companion object {
         const val SYNC_ENABLED_KEY = "syncEnabled"
+        const val WEB_ENABLED_KEY = "webEnabled"
     }
 }
