@@ -30,6 +30,14 @@ data class WebStatus(
     /** Porta su cui ci si è **effettivamente** legati, che con `WEB_PORT = 0` nei test non coincide. */
     val port: Int? = null,
     val token: String? = null,
+    /**
+     * Impronta SHA-256 del certificato che il server presenta, nella forma in cui la mostrano i
+     * browser. Esiste perché un essere umano la confronti: il certificato è autofirmato, il
+     * browser avvisa e l'utente scavalca l'avviso — e scavalcandolo accetta *qualunque*
+     * certificato, compreso quello di chi si fosse messo in mezzo. Confrontarla una volta è ciò
+     * che distingue «cifrato» da «cifrato e autenticato».
+     */
+    val impronta: String? = null,
     /** Esito o errore dell'ultimo tentativo, già in italiano. */
     val lastMessage: String? = null
 ) {
@@ -37,10 +45,16 @@ data class WebStatus(
      * L'indirizzo completo da digitare sull'altro dispositivo. Si compone qui e non nella
      * schermata: due punti che lo compongono per conto proprio prima o poi lo compongono in due
      * modi diversi, e chi digita non ha modo di sapere quale dei due è quello buono.
+     *
+     * **`https` e non `http`**: la porta non parla più in chiaro. Tenerle aperte tutte e due
+     * avrebbe conservato la debolezza che questa scelta esiste per chiudere — chi ascolta
+     * aspetterebbe la prima richiesta non cifrata. Il prezzo è che un segnalibro salvato con la
+     * versione precedente smette di funzionare, e non in modo comprensibile: un client in chiaro
+     * contro una porta TLS riceve spazzatura, non un errore. L'indirizzo giusto è sempre qui.
      */
     val url: String?
         get() = if (listening && host != null && port != null && token != null) {
-            "http://$host:$port/?t=$token"
+            "https://$host:$port/?t=$token"
         } else {
             null
         }

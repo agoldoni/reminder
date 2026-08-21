@@ -15,10 +15,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -117,6 +121,19 @@ fun SezioneWebApp(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+
+                    // **L'avviso va anticipato qui.** Comparirà di sicuro — il certificato è
+                    // generato dal telefono e nessun browser lo conosce — e chi non se lo aspetta
+                    // pensa che l'app sia rotta e torna indietro proprio quando manca un tocco.
+                    Text(
+                        "La prima volta il browser dirà che la connessione non è privata: è " +
+                            "previsto. Il certificato lo genera questo telefono, non un'autorità " +
+                            "che il browser conosca. Prosegui e la pagina si apre.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    stato.impronta?.let { impronta -> Impronta(impronta) }
                 }
 
                 // Acceso ma senza indirizzo: o la porta non si è aperta, o non c'è una rete locale.
@@ -142,5 +159,47 @@ fun SezioneWebApp(
                 )
             }
         }
+    }
+}
+
+/**
+ * L'impronta del certificato, nascosta finché non la si chiede.
+ *
+ * **Perché nascosta.** Sono trentadue coppie esadecimali: in mezzo all'indirizzo sarebbero rumore
+ * per chi vuole solo aprire la pagina, e la maggior parte delle volte è ciò che si vuole.
+ *
+ * **Perché c'è.** Scavalcando l'avviso del browser si accetta *qualunque* certificato, quindi si
+ * ottiene una connessione cifrata ma non la certezza di parlare con questo telefono: chi si
+ * mettesse in mezzo sulla rete potrebbe presentarne uno suo. Confrontare questa impronta con
+ * quella che il browser mostra nei dettagli del certificato è ciò che chiude quel buco — una
+ * volta sola, e solo per chi ci tiene. È lo stesso confronto a vista con cui l'app fa associare
+ * due dispositivi nella schermata di sincronizzazione.
+ */
+@Composable
+private fun Impronta(impronta: String) {
+    var aperta by remember { mutableStateOf(false) }
+
+    Text(
+        if (aperta) "Nascondi l'impronta del certificato" else "Verifica il certificato",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier
+            .clickable { aperta = !aperta }
+            .padding(vertical = 4.dp)
+    )
+
+    if (aperta) {
+        Text(
+            impronta,
+            style = MaterialTheme.typography.bodySmall,
+            fontFamily = FontFamily.Monospace,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            "Nel browser, apri i dettagli del certificato e confronta questa sequenza. Se " +
+                "coincide, stai parlando con questo telefono e con nessun altro.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }

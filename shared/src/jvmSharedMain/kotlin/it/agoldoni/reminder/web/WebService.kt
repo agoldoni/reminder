@@ -4,6 +4,8 @@ import it.agoldoni.reminder.data.EventDao
 import it.agoldoni.reminder.platform.AppSettings
 import it.agoldoni.reminder.platform.nowMillis
 import it.agoldoni.reminder.sync.siteAddress
+import java.io.File
+import java.net.InetAddress
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,6 +28,12 @@ class WebService(
     /** Porta di ascolto; a zero la sceglie il sistema, cosa che serve solo ai test. */
     private val port: Int = WEB_PORT,
     now: () -> Long = ::nowMillis,
+    /**
+     * Dove vivono chiave e certificato del server. Non ha un valore predefinito di proposito: un
+     * percorso sbagliato non darebbe un errore ma un certificato **rigenerato a ogni avvio**, e
+     * l'utente si ritroverebbe l'avviso del browser ogni volta senza capire perché.
+     */
+    cartellaCertificato: File,
     /** Come si ricava l'indirizzo da mostrare; sostituibile nei test. */
     private val indirizzoLocale: () -> String? = { runCatching { siteAddress().hostAddress }.getOrNull() },
     /** Chi tiene vivo il processo. Fuori da Android non serve nessuno. */
@@ -34,7 +42,26 @@ class WebService(
 
     private val token = AccessToken(now)
     private val router = Router(dao, token)
-    private val server = HttpServer(scope) { richiesta, chi -> router.gestisci(richiesta, chi) }
+    private val certificati = CertificateStore(cartellaCertificato, now = now)
+
+    /**
+     * Il socket lo apre l'identità TLS, non `HttpServer`, che di TLS resta ignaro. La lambda
+     * risolve l'identità **al momento dell'apertura** e non alla costruzione: qui siamo
+     * nell'inizializzazione dell'oggetto, che su Android avviene in `Application.onCreate()`, e
+     * leggere o generare un certificato lì rallenterebbe l'avvio dell'app anche quando
+     * l'interruttore è spento e non serve a nulla. `caricaOCrea` tiene la propria cache, quindi
+     * riaperture successive non ripagano il costo.
+     */
+    private val server = HttpServer(scope, apriSocket = { porta -> identita().apriSocket(porta) }) {
+        richiesta, chi ->
+        router.gestisci(richiesta, chi)
+    }
+
+    private fun identita(): TlsIdentity = certificati.caricaOCrea {
+        // Solo per il `subjectAltName`, che nessuno verificherà: il loopback lo aggiunge
+        // `CertificateStore` da sé, perché serve alla prova via `adb forward`.
+        listOfNotNull(indirizzoLocale()?.let { runCatching { InetAddress.getByName(it) }.getOrNull() })
+    }
 
     private val _status = MutableStateFlow(WebStatus(enabled = settings.webEnabled.value))
     override val status: StateFlow<WebStatus> = _status.asStateFlow()
@@ -90,6 +117,23 @@ class WebService(
         if (_status.value.listening) return
         // Al primo avvio del processo con l'interruttore già acceso non c'è ancora un token.
         if (token.valore == null) token.rigenera()
+
+        // Il certificato si prepara **prima** e a parte, per poterne riportare il guasto con il
+        // suo nome: infilarlo nello stesso `runCatching` dell'apertura direbbe all'utente che la
+        // porta è occupata mentre il problema è il disco.
+        val identita = runCatching { identita() }.getOrElse { errore ->
+            _status.value = _status.value.copy(
+                listening = false,
+                port = null,
+                host = null,
+                token = null,
+                impronta = null,
+                lastMessage = "Impossibile preparare il certificato del server: " +
+                    "${errore.message ?: "errore sconosciuto"}."
+            )
+            return
+        }
+
         runCatching { server.start(port) }
             .onSuccess { portaEffettiva ->
                 _status.value = _status.value.copy(
@@ -99,6 +143,7 @@ class WebService(
                     port = portaEffettiva,
                     host = indirizzoLocale(),
                     token = token.valore,
+                    impronta = identita.impronta,
                     lastMessage = null
                 )
             }
@@ -108,6 +153,7 @@ class WebService(
                     port = null,
                     host = null,
                     token = null,
+                    impronta = null,
                     lastMessage = "Impossibile aprire la porta $port: " +
                         "${errore.message ?: "porta occupata"}."
                 )
@@ -116,6 +162,6 @@ class WebService(
 
     private fun chiudi() {
         server.stop()
-        _status.value = _status.value.copy(listening = false, port = null, host = null)
+        _status.value = _status.value.copy(listening = false, port = null, host = null, impronta = null)
     }
 }

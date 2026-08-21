@@ -18,6 +18,7 @@ import it.agoldoni.reminder.sync.SyncEngine
 import it.agoldoni.reminder.sync.SyncService
 import it.agoldoni.reminder.web.ForegroundServiceKeeper
 import it.agoldoni.reminder.web.WebService
+import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -66,6 +67,11 @@ class ReminderApp : Application() {
             dao = database.eventDao(),
             settings = settings,
             scope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+            // Chiave e certificato del server stanno in `filesDir`, che Android crea già privata
+            // all'app. Non fra i database: quella cartella è dei database e non deve ospitare
+            // altro. Sopravvivono agli aggiornamenti dell'app ma non alla disinstallazione — che è
+            // il comportamento voluto, lo stesso di `device-id`.
+            cartellaCertificato = File(filesDir, "web-tls"),
             keeper = ForegroundServiceKeeper(this)
         )
 

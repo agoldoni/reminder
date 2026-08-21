@@ -22,9 +22,25 @@ private const val READ_TIMEOUT_MILLIS = 10_000
  * Nessun keep-alive: una richiesta per connessione, poi si chiude. Costa una connessione in più
  * per ogni file della pagina e fa risparmiare tutta la gestione dello stato di una connessione
  * riutilizzata, che è dove si annidano i problemi.
+ *
+ * **Di TLS non sa niente**, e non è un caso: riceve un `ServerSocket` già aperto da chi sa come
+ * aprirlo (`TlsIdentity.apriSocket`), così il trasporto cifrato sta in un file solo e questo ciclo
+ * resta lo stesso che i test della feature 002 provano in chiaro. Un dettaglio che vale la pena
+ * conoscere: su un socket TLS **l'handshake non avviene su `accept()` ma alla prima lettura**,
+ * quindi un client che rifiuta il certificato — o che parla in chiaro a una porta cifrata — fa
+ * fallire `getInputStream()` con una `SSLHandshakeException`, che discende da `IOException` ed è
+ * già catturata qui sotto insieme a tutte le altre cadute di connessione.
  */
 internal class HttpServer(
     private val scope: CoroutineScope,
+    /**
+     * Come si apre il socket d'ascolto. Il valore predefinito è in chiaro e serve ai test del
+     * ciclo, che di TLS non hanno bisogno; in produzione arriva da `TlsIdentity`.
+     *
+     * Sta **in mezzo** e non in fondo perché [gestisci] deve restare l'ultimo parametro: è passato
+     * come lambda finale da `WebService`.
+     */
+    private val apriSocket: (Int) -> ServerSocket = { ServerSocket(it) },
     /** Riceve la richiesta e l'indirizzo da cui arriva: la soglia dei tentativi è per indirizzo. */
     private val gestisci: suspend (HttpRequest, String) -> HttpResponse
 ) {
@@ -37,7 +53,7 @@ internal class HttpServer(
     /** [requestedPort] a zero fa scegliere la porta al sistema: serve ai test. */
     fun start(requestedPort: Int = WEB_PORT): Int {
         serverSocket?.let { return it.localPort }
-        val socket = ServerSocket(requestedPort)
+        val socket = apriSocket(requestedPort)
         serverSocket = socket
         acceptJob = scope.launch(Dispatchers.IO) {
             while (!socket.isClosed) {

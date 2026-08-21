@@ -30,7 +30,7 @@ class HttpServerTest {
     }
 
     private fun avvia(gestisci: suspend (HttpRequest, String) -> HttpResponse): Int {
-        val istanza = HttpServer(scope, gestisci)
+        val istanza = HttpServer(scope, gestisci = gestisci)
         server = istanza
         return istanza.start(requestedPort = 0)
     }
