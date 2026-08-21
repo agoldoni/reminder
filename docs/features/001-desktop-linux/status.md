@@ -188,7 +188,7 @@ campo in cui digitarlo — è la conseguenza diretta della scelta crittografica 
 
 ## Prossimo passo
 
-Le funzionalità ci sono tutte. Restano:
+**Il piano è chiuso: 46,0 gg su 46,0.** Restava:
 
 - **T-29** (1,5 gg) — test di integrazione: due istanze desktop che si scoprono, si associano e
   convergono. È il primo che eserciterà mDNS e trasporto insieme.
