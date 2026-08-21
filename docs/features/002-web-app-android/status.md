@@ -44,6 +44,7 @@ Chromium in sessione X separata (`tools/sessione-x.sh browser`).
 | TC-20 · background/primo piano | ✅ in background la connessione è **rifiutata**; al ritorno `200` con lo stesso token; nessun crash |
 | TC-21 · irraggiungibile con pagina aperta | ✅ la pagina mostra l'avviso in rosso invece di spacciare per fresca una lista vecchia; al ritorno l'avviso sparisce da solo |
 | TC-23 · resa | ✅ Chromium, tema chiaro e scuro, larghezza stretta senza scorrimento orizzontale, formato `dd/MM/yyyy HH:mm` identico all'app |
+| Copia dell'indirizzo negli appunti | ✅ toccata la riga, incollato con `KEYCODE_PASTE` nel campo «Indirizzo»: l'URL arriva per intero, codice compreso |
 | TC-24 · non-regressione | ✅ suite completa verde; allarmi, sincronizzazione ed export non toccati |
 | TC-18 · fascia che cambia al passare dell'ora senza rete | ⏳ non osservata (richiede di aspettare la scadenza di un evento) |
 | TC-22 · cambio di rete a schermata aperta | ⏳ non verificabile su emulatore |
@@ -81,6 +82,13 @@ piano, ma la ragione scritta nei documenti era imprecisa ed è stata corretta.
   cattura dentro l'ambito del socket. Presidiato da un test.
 - **Il testo arrivava a filo dell'interruttore** nella sezione dell'interfaccia. Spaziatura
   esplicita nella `Row`.
+- **L'indirizzo si copiava, ma nessuno poteva saperlo.** Il pulsante aveva l'icona `Share`, che
+  promette di condividere, non di copiare — `ContentCopy` non è fra le 56 icone di
+  `material-icons-core` ed è stata ridefinita a mano. Ora copia tutta la riga, non solo l'icona.
+  Nel verificarlo è emerso un secondo difetto: da Android 13 il sistema apre già la sua anteprima
+  degli appunti, e la nostra conferma ci finiva sotto dicendo la stessa cosa. Ora il messaggio lo
+  dà l'app solo dove il sistema non lo dà — cosa che riguarda il telefono di prova, che è
+  Android 10.
 
 ---
 

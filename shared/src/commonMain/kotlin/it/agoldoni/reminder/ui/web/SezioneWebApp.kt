@@ -5,8 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Share
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -24,6 +23,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import it.agoldoni.reminder.platform.LocalAppContainer
+import it.agoldoni.reminder.platform.sistemaConfermaLaCopia
+import it.agoldoni.reminder.ui.icons.CopyIcon
 
 /**
  * La web app locale, come sezione della schermata Sincronizzazione.
@@ -81,8 +82,20 @@ fun SezioneWebApp(
                 )
 
                 url != null -> {
+                    val copia = {
+                        appunti.setText(AnnotatedString(url))
+                        // Da Android 13 il sistema apre già la sua anteprima con il testo
+                        // copiato: aggiungerci il nostro messaggio direbbe due volte la stessa
+                        // cosa, una sopra l'altra.
+                        if (!sistemaConfermaLaCopia()) onMessaggio("Indirizzo copiato negli appunti.")
+                    }
+                    // Tutta la riga copia, non solo l'icona: su un telefono l'indirizzo è il
+                    // bersaglio grande e ovvio, e ridigitarlo a mano sull'altro dispositivo è
+                    // proprio la fatica che questa riga esiste per togliere.
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        modifier = Modifier.fillMaxWidth()
+                            .clickable(onClickLabel = "Copia l'indirizzo", onClick = copia)
+                            .padding(vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
@@ -92,18 +105,15 @@ fun SezioneWebApp(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f)
                         )
-                        IconButton(onClick = {
-                            appunti.setText(AnnotatedString(url))
-                            onMessaggio("Indirizzo copiato.")
-                        }) {
-                            Icon(Icons.Default.Share, contentDescription = "Copia l'indirizzo")
+                        IconButton(onClick = copia) {
+                            Icon(CopyIcon, contentDescription = "Copia l'indirizzo")
                         }
                     }
                     // Il codice in fondo all'indirizzo è la sola cosa che tiene fuori gli altri:
                     // va detto, o verrà copiato via senza pensarci.
                     Text(
-                        "Digita l'indirizzo per intero, codice compreso: senza quello la pagina " +
-                            "non si apre. Il codice cambia ogni volta che riaccendi.",
+                        "Tocca per copiarlo. Serve per intero, codice compreso: senza quello la " +
+                            "pagina non si apre. Il codice cambia ogni volta che riaccendi.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
