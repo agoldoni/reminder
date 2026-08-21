@@ -19,7 +19,6 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlin.test.fail
 
 private class SettingsDiProva(web: Boolean = false) : AppSettings {
     private val _sync = MutableStateFlow(false)
@@ -31,7 +30,17 @@ private class SettingsDiProva(web: Boolean = false) : AppSettings {
     override fun setWebEnabled(enabled: Boolean) { _web.value = enabled }
 }
 
-/** TC-11/12/13/14 — l'interruttore, il ciclo di vita e la sorte del token. */
+/** Registra le richieste al custode: su Android è il servizio in primo piano. */
+private class CustodeDiProva(private val rifiuta: Boolean = false) : ProcessKeeper {
+    val richieste = mutableListOf<Boolean>()
+    val vivo: Boolean get() = richieste.lastOrNull() == true
+    override fun keepAlive(active: Boolean) {
+        richieste += active
+        if (rifiuta && active) error("il sistema ha rifiutato il servizio in primo piano")
+    }
+}
+
+/** TC-11/12/13/14 — l'interruttore, chi tiene viva la porta e la sorte del token. */
 class WebServiceTest {
 
     private val scope = CoroutineScope(SupervisorJob())
@@ -39,13 +48,17 @@ class WebServiceTest {
     @AfterTest
     fun tearDown() = scope.cancel()
 
-    private fun servizio(settings: AppSettings = SettingsDiProva()) = WebService(
+    private fun servizio(
+        settings: AppSettings = SettingsDiProva(),
+        custode: ProcessKeeper = CustodeDiProva()
+    ) = WebService(
         dao = FakeEventDao(),
         settings = settings,
         scope = scope,
         // Porta a zero: la sceglie il sistema, così il test non dipende da una porta libera.
         port = 0,
-        indirizzoLocale = { "192.168.1.42" }
+        indirizzoLocale = { "192.168.1.42" },
+        keeper = custode
     )
 
     private fun raggiungibile(porta: Int): Boolean = try {
@@ -55,19 +68,21 @@ class WebServiceTest {
     }
 
     @Test
-    fun `a interruttore spento non si apre nessun socket`() {
-        val web = servizio()
-        web.onForeground()
+    fun `a interruttore spento non si apre nessun socket e non si disturba il custode`() {
+        val custode = CustodeDiProva()
+        val web = servizio(custode = custode)
+        web.resume()
         assertFalse(web.status.value.listening)
         assertNull(web.status.value.port)
         assertNull(web.status.value.token)
         assertNull(web.status.value.url)
+        assertTrue(custode.richieste.isEmpty())
     }
 
     @Test
-    fun `accendere con l'app davanti apre la porta e pubblica l'indirizzo completo`() {
-        val web = servizio()
-        web.onForeground()
+    fun `accendere apre la porta, pubblica l'indirizzo e ingaggia il custode`() {
+        val custode = CustodeDiProva()
+        val web = servizio(custode = custode)
         web.enable()
 
         val stato = web.status.value
@@ -78,22 +93,42 @@ class WebServiceTest {
         assertNotNull(stato.token)
         assertEquals("http://192.168.1.42:${stato.port}/?t=${stato.token}", stato.url)
         assertTrue(raggiungibile(stato.port!!))
+        assertTrue(custode.vivo, "senza custode la porta morirebbe appena l'app va in background")
         web.disable()
     }
 
     @Test
-    fun `accendere ad app in background non apre niente, ma resta acceso`() {
+    fun `la porta non dipende piu' dall'app in primo piano`() {
+        // È il cambio rispetto alla prima versione: nessun `onBackground` la chiude, perché è il
+        // custode a tenere vivo il processo.
         val web = servizio()
-        web.enable() // nessun onForeground: l'app non è davanti
-        assertTrue(web.status.value.enabled, "l'interruttore resta acceso")
-        assertFalse(web.status.value.listening, "ma non si ascolta")
-        assertNull(web.status.value.url, "e non si mostra un indirizzo che non risponderebbe")
+        web.enable()
+        val porta = web.status.value.port!!
+        val token = web.status.value.token
+        repeat(5) { web.resume() } // come se l'app andasse e venisse dal primo piano
+        assertTrue(web.status.value.listening)
+        assertEquals(porta, web.status.value.port, "la porta non si è mai chiusa")
+        assertEquals(token, web.status.value.token, "e il token non è cambiato")
+        assertTrue(raggiungibile(porta))
+        web.disable()
     }
 
     @Test
-    fun `spegnere chiude la porta e invalida il token`() {
-        val web = servizio()
-        web.onForeground()
+    fun `resume su una porta gia' aperta non richiama il custode`() {
+        // Altrimenti si innescherebbe un andirivieni con chi il custode lo ha appena avviato.
+        val custode = CustodeDiProva()
+        val web = servizio(custode = custode)
+        web.enable()
+        val richiesteDopoAccensione = custode.richieste.size
+        repeat(3) { web.resume() }
+        assertEquals(richiesteDopoAccensione, custode.richieste.size)
+        web.disable()
+    }
+
+    @Test
+    fun `spegnere chiude la porta, congeda il custode e invalida il token`() {
+        val custode = CustodeDiProva()
+        val web = servizio(custode = custode)
         web.enable()
         val porta = web.status.value.port!!
         val vecchio = web.status.value.token!!
@@ -102,63 +137,48 @@ class WebServiceTest {
         assertFalse(web.status.value.enabled)
         assertFalse(web.status.value.listening)
         assertNull(web.status.value.token)
+        assertFalse(custode.vivo, "la notifica non deve sopravvivere alla porta")
         assertFalse(raggiungibile(porta), "a porta chiusa la connessione va rifiutata")
 
-        // E il token non deve tornare buono riaccendendo.
         web.enable()
-        assertNotEquals(vecchio, web.status.value.token)
+        assertNotEquals(vecchio, web.status.value.token, "un indirizzo copiato prima non deve valere")
         web.disable()
     }
 
     @Test
-    fun `il background chiude la porta ma conserva il token`() {
-        // È il criterio che protegge dalla rotazione dello schermo: un giro completo di
-        // onStop/onStart non deve invalidare l'indirizzo già digitato sull'altro dispositivo.
-        val web = servizio()
-        web.onForeground()
+    fun `il custode si congeda prima che la porta si chiuda`() {
+        // L'ordine inverso lascerebbe per un istante una notifica che dichiara aperta una porta
+        // già chiusa.
+        val custode = CustodeDiProva()
+        val web = servizio(custode = custode)
         web.enable()
-        val token = web.status.value.token!!
-        val host = web.status.value.host
-
-        web.onBackground()
-        assertFalse(web.status.value.listening)
-        assertTrue(web.status.value.enabled, "non è stato l'utente a spegnere")
-
-        web.onForeground()
-        assertTrue(web.status.value.listening)
-        assertEquals(token, web.status.value.token, "il token doveva sopravvivere")
-        assertEquals(host, web.status.value.host, "l'indirizzo doveva restare lo stesso")
-        // Non si confronta l'URL intero: qui la porta la chiede al sistema (`port = 0`) e a ogni
-        // riapertura ne arriva una diversa. In esercizio la porta è fissa, quindi con host e token
-        // invariati l'URL è invariato — che è ciò che il criterio di US-007 chiede davvero.
-        assertNotNull(web.status.value.url)
         web.disable()
+        assertEquals(listOf(true, false), custode.richieste)
     }
 
     @Test
-    fun `molti giri fra primo piano e background non lasciano niente appeso`() {
-        val web = servizio()
-        web.onForeground()
-        web.enable()
-        val token = web.status.value.token
-        repeat(30) {
-            web.onBackground()
-            web.onForeground()
-        }
-        assertTrue(web.status.value.listening)
-        assertEquals(token, web.status.value.token)
-        assertTrue(raggiungibile(web.status.value.port!!))
-        web.disable()
-    }
-
-    @Test
-    fun `all'avvio con l'interruttore gia' acceso si riapre da soli`() {
-        // Lo stato dell'interruttore è persistito: alla riapertura dell'app deve valere.
-        val web = servizio(SettingsDiProva(web = true))
+    fun `all'avvio con l'interruttore gia' acceso la porta si riapre da sola`() {
+        val custode = CustodeDiProva()
+        val web = servizio(SettingsDiProva(web = true), custode)
         assertTrue(web.status.value.enabled)
-        web.onForeground()
+        web.resume()
         assertTrue(web.status.value.listening)
         assertNotNull(web.status.value.token, "un token serve anche quando nessuno ha premuto nulla")
+        assertTrue(custode.vivo)
+        web.disable()
+    }
+
+    @Test
+    fun `un custode che rifiuta lascia la porta aperta ma lo dice`() {
+        // Da Android 12 un servizio in primo piano avviato mentre l'app non è davanti viene
+        // respinto. Non è un motivo per chiudere la porta, ma l'utente deve sapere che non
+        // reggerà a schermo spento invece di scoprirlo quando il browser smette di rispondere.
+        val web = servizio(custode = CustodeDiProva(rifiuta = true))
+        web.enable()
+        assertTrue(web.status.value.listening, "finché l'app è aperta funziona lo stesso")
+        val messaggio = web.status.value.lastMessage
+        assertNotNull(messaggio)
+        assertTrue(messaggio.contains("solo con l'app in primo piano"), messaggio)
         web.disable()
     }
 
@@ -166,16 +186,18 @@ class WebServiceTest {
     fun `una porta occupata diventa un messaggio in italiano, non un'eccezione`() {
         val occupante = java.net.ServerSocket(0)
         try {
+            val custode = CustodeDiProva()
             val web = WebService(
                 dao = FakeEventDao(),
                 settings = SettingsDiProva(),
                 scope = scope,
                 port = occupante.localPort,
-                indirizzoLocale = { "192.168.1.42" }
+                indirizzoLocale = { "192.168.1.42" },
+                keeper = custode
             )
-            web.onForeground()
             web.enable() // non deve lanciare
             assertFalse(web.status.value.listening)
+            assertFalse(custode.vivo, "niente notifica per una porta che non si è aperta")
             val messaggio = web.status.value.lastMessage
             assertNotNull(messaggio, "l'utente deve poter leggere perché non ha funzionato")
             assertTrue(messaggio.startsWith("Impossibile aprire la porta"), messaggio)
@@ -188,7 +210,7 @@ class WebServiceTest {
     fun `il servizio inerte del desktop non fa niente e lo dichiara`() {
         assertFalse(WebServerNonDisponibile.supported)
         WebServerNonDisponibile.enable()
-        WebServerNonDisponibile.onForeground()
+        WebServerNonDisponibile.resume()
         assertFalse(WebServerNonDisponibile.status.value.enabled)
         assertNull(WebServerNonDisponibile.status.value.url)
     }

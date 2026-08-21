@@ -1,7 +1,8 @@
 # Web app locale su Android — Stato
 
 **Aggiornato:** 2026-08-21
-**Stato:** implementata e verificata sul campo (emulatore). In attesa di prova su rete reale.
+**Stato:** implementata e verificata sul campo (emulatore + telefono). Il vincolo del primo
+piano è stato rimosso dopo la prova all'uso. In attesa di prova su rete reale.
 **Piano:** [phase-3-implementation-plan.md](phase-3-implementation-plan.md)
 
 ---
@@ -55,6 +56,41 @@ POST/PUT/DELETE; `404` su percorso ignoto; `400` su `/../CLAUDE.md`, `/..%2fetc%
 
 ---
 
+## La decisione rivista: la porta non dipende più dal primo piano
+
+Il piano prevedeva che il server vivesse **solo con l'app in primo piano** (decisione D-01), per
+non pagare permessi e notifica permanente. All'uso reale si è rivelato troppo stretto: obbligava a
+tenere l'app aperta sullo schermo mentre si consultava dal PC, cioè a non rimettere il telefono in
+tasca — che è la situazione per cui la feature esiste.
+
+Ora c'è `WebServerService`, un servizio in primo piano. Quattro dettagli che non sono ovvii:
+
+- **Tipo `specialUse`, non `dataSync`.** Da Android 15 `dataSync` ha un tetto di sei ore al
+  giorno: sarebbe una porta che si chiude da sola a metà giornata.
+- **`START_NOT_STICKY`.** Se il sistema uccide il processo, il servizio non deve tornare da solo:
+  il token vive in memoria e ricomincerebbe diverso, quindi la notifica dichiarerebbe raggiungibile
+  un indirizzo che nessuno conosce. Si riparte quando l'utente riapre l'app, che è anche l'unico
+  posto dove può leggere il nuovo indirizzo.
+- **Dall'API 31 il sistema rifiuta di avviare un servizio in primo piano da un'app che non è
+  davanti.** Per questo `resume()` si chiama da `MainActivity.onStart()` e non da
+  `ReminderApp.onCreate()`. Un rifiuto non chiude la porta — finché l'app è aperta funziona lo
+  stesso — ma diventa un messaggio, così l'utente non lo scopre quando il browser smette di
+  rispondere.
+- **«Spegni» nella notifica spegne l'interruttore**, non solo il servizio. Fermare il servizio
+  lasciando acceso il flag farebbe riaprire la porta alla successiva apertura dell'app.
+
+La notifica non porta l'indirizzo: il token finirebbe sulla schermata di blocco.
+
+**Verificato su emulatore API 34:** con l'app mandata in background la pagina continua a essere
+servita (`200` con i dati reali) e `dumpsys` mostra il servizio con `isForeground=true`; la
+notifica è silenziosa e porta l'azione; toccando «Spegni» la connessione viene rifiutata, il
+servizio sparisce e `impostazioni.xml` riporta `webEnabled=false`. Con schermo spento e Doze
+profondo forzato (`deviceidle force-idle`, stato `IDLE`) il servizio resta vivo e la porta
+risponde. **Limite della prova:** la richiesta passa dal loopback via `adb forward`, non dal
+Wi-Fi; che la via radio regga in Doze reale lo dirà solo la prova su rete vera.
+
+---
+
 ## Due cose che la realizzazione ha cambiato rispetto al piano
 
 **1. Gli asset non stanno in `androidMain/resources`, ma in `shared/src/webAssets/`.**
@@ -95,7 +131,8 @@ piano, ma la ragione scritta nei documenti era imprecisa ed è stata corretta.
 ## Resta da fare
 
 1. **Prova su rete reale** fra telefono e computer sullo stesso Wi-Fi: è l'unica che dice qualcosa
-   su R3 (reti che isolano i client) e su TC-22.
+   su R3 (reti che isolano i client), su TC-22, e sulla tenuta della porta in Doze **vero** con il
+   traffico che passa dal Wi-Fi invece che dal loopback di `adb forward`.
 2. **TC-18**: osservare la fascia cromatica cambiare al passare dell'ora senza traffico.
 3. **Nulla di bloccante**: la feature è completa e coerente con il piano.
 

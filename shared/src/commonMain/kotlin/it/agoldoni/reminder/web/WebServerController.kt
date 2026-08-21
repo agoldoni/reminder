@@ -62,26 +62,33 @@ interface WebServerController {
      */
     val supported: Boolean
 
-    /** Accende l'interruttore e, se l'app è in primo piano, apre il socket. */
+    /** Accende l'interruttore, apre il socket e chiede al custode di tenere vivo il processo. */
     fun enable()
 
-    /** Spegne l'interruttore, chiude il socket **e invalida il token**. */
+    /** Spegne l'interruttore, chiude il socket, **invalida il token** e congeda il custode. */
     fun disable()
 
     /**
-     * L'app è tornata in primo piano. **Non** tocca l'interruttore: il token sopravvive, perché
-     * altrimenti l'indirizzo già digitato sull'altro dispositivo smetterebbe di funzionare a ogni
-     * rotazione dello schermo — che è un cambio di configurazione, e quindi un giro completo di
-     * `onStop`/`onStart`.
+     * Riapre se l'interruttore è acceso. Da chiamare quando l'app arriva in primo piano: è
+     * l'unico momento in cui su Android si può avviare un servizio in primo piano senza che il
+     * sistema lo rifiuti, e serve a rimettere in piedi la porta dopo che il processo è stato
+     * ricreato.
+     *
+     * Non fa nulla se si sta già ascoltando, così chiamarla due volte non costa niente.
      */
-    fun onForeground()
+    fun resume()
+}
 
-    /**
-     * L'app ha lasciato il primo piano: si chiude il socket ma si resta accesi. Android non lascia
-     * tenere un socket in ascolto ad app chiusa, ed è la stessa ragione per cui la
-     * sincronizzazione su telefono ascolta solo a schermata aperta.
-     */
-    fun onBackground()
+/**
+ * Chi tiene vivo il processo mentre la porta è aperta.
+ *
+ * Su Android non basta lasciare il socket aperto: il processo in background viene congelato o
+ * ucciso e Doze taglia la rete. Serve un servizio in primo piano, che si porta dietro una notifica
+ * permanente — la quale non è solo un costo, ma il segnale sempre visibile che una porta è aperta.
+ * Altrove non serve niente, e l'implementazione predefinita infatti non fa nulla.
+ */
+fun interface ProcessKeeper {
+    fun keepAlive(active: Boolean)
 }
 
 /**
@@ -94,6 +101,5 @@ object WebServerNonDisponibile : WebServerController {
     override val supported: Boolean = false
     override fun enable() = Unit
     override fun disable() = Unit
-    override fun onForeground() = Unit
-    override fun onBackground() = Unit
+    override fun resume() = Unit
 }

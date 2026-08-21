@@ -7,6 +7,11 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- La web app resta raggiungibile ad app chiusa solo se qualcosa tiene vivo il processo:
+         senza servizio in primo piano il sistema lo congela e Doze taglia la rete. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
     <application
         android:name=".ReminderApp"
         android:allowBackup="true"
@@ -41,6 +46,17 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+
+        <!-- `specialUse` e non `dataSync`: da Android 15 quest'ultimo ha un tetto di sei ore al
+             giorno, che qui vorrebbe dire una porta che si chiude da sola a metà giornata. -->
+        <service
+            android:name="it.agoldoni.reminder.web.WebServerService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Server HTTP locale che espone i promemoria ai browser della rete domestica" />
+        </service>
 
         <provider
             android:name="androidx.core.content.FileProvider"

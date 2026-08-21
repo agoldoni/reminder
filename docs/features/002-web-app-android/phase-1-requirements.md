@@ -11,7 +11,7 @@
 
 | Decisione | Scelta | Conseguenza principale |
 |---|---|---|
-| Ciclo di vita del server | **Solo con app in primo piano** | Nessun permesso nuovo, nessun foreground service, nessuna notifica persistente |
+| Ciclo di vita del server | ~~Solo con app in primo piano~~ → **rivista in realizzazione: foreground service** | La prima scelta si è rivelata troppo stretta all'uso — obbligava a tenere l'app sullo schermo mentre si consultava dal PC. Ora la porta resta aperta ad app chiusa, con notifica permanente. Vedi `status.md` |
 | Controllo dell'accesso | **Token nell'URL** | Chi non ha il token riceve `403`; nessun login, nessuna sessione da gestire |
 | Grado di "PWA" | **Web app responsive + `manifest.json`, senza service worker** | Niente offline e niente installazione piena: è una conseguenza dei secure context, non una scelta di comodo |
 | Stack | **Server HTTP scritto a mano + HTML/CSS/JS statici** | Zero dipendenze nuove nell'APK, zero toolchain JavaScript |

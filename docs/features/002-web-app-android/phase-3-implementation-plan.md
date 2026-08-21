@@ -98,6 +98,7 @@ sua conseguenza si dimentica.
 
 | # | Decisione | Scelta | Conseguenza |
 |---|---|---|---|
+| D-08 | Ciclo di vita (rivista dopo la prova sul campo) | **Foreground service** | La scelta iniziale «solo primo piano» obbligava a tenere l'app sullo schermo mentre si consultava dal PC: inutilizzabile col telefono in tasca. Ora la porta resta aperta ad app chiusa; costo: permessi `FOREGROUND_SERVICE` + `..._SPECIAL_USE` e una notifica permanente, che è anche il segnale visibile che una porta è aperta |
 | D-01 | Numero di porta | **9888** | Distinta da 47700 (`SYNC_PORT`) e 47653 (`SingleInstance.DEFAULT_PORT`); i due test di distinzione restano obbligatori (T-02) |
 | D-02 | Punto d'ingresso | **Sezione dentro la schermata Sincronizzazione** | Niente schermata nuova, niente rotta nuova, niente quinta icona. `EventListScreen` e `NavGraph` **non si toccano**; si modifica `SyncScreen`. Risolve R16 e riduce T-12 di 0,25 gg |
 | D-03 | Caricamento asset | **Classloader** da `androidMain/resources` | Nessun `Context` richiesto, codice riusabile su desktop. Resta subordinata all'esito di T-03, che ha già il ripiego individuato |

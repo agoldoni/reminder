@@ -12,11 +12,12 @@ import kotlinx.coroutines.flow.asStateFlow
 /**
  * Mette insieme i pezzi della web app locale: interruttore, socket, token e stato mostrabile.
  *
- * **Vive quanto il processo, non quanto una schermata.** È costruito dall'`Application` e riceve
- * `onForeground()`/`onBackground()` dall'`Activity`. Se socket e token fossero legati a una
- * schermata o a una Activity, una rotazione dello schermo — che è un giro completo di
- * `onStop`/`onStart` — rigenererebbe il token, e l'indirizzo già digitato sull'altro dispositivo
- * smetterebbe di funzionare senza che l'utente abbia toccato niente.
+ * **Vive quanto il processo, non quanto una schermata.** È costruito dall'`Application`, e finché
+ * l'interruttore è acceso la porta resta aperta anche ad app chiusa: a tenere vivo il processo ci
+ * pensa il [ProcessKeeper]. Se socket e token fossero legati a una schermata o a una Activity, una
+ * rotazione dello schermo — che è un giro completo di `onStop`/`onStart` — rigenererebbe il token,
+ * e l'indirizzo già digitato sull'altro dispositivo smetterebbe di funzionare senza che l'utente
+ * abbia toccato niente.
  */
 class WebService(
     dao: EventDao,
@@ -26,7 +27,9 @@ class WebService(
     private val port: Int = WEB_PORT,
     now: () -> Long = ::nowMillis,
     /** Come si ricava l'indirizzo da mostrare; sostituibile nei test. */
-    private val indirizzoLocale: () -> String? = { runCatching { siteAddress().hostAddress }.getOrNull() }
+    private val indirizzoLocale: () -> String? = { runCatching { siteAddress().hostAddress }.getOrNull() },
+    /** Chi tiene vivo il processo. Fuori da Android non serve nessuno. */
+    private val keeper: ProcessKeeper = ProcessKeeper { }
 ) : WebServerController {
 
     private val token = AccessToken(now)
@@ -38,42 +41,49 @@ class WebService(
 
     override val supported: Boolean = true
 
-    /**
-     * Vero mentre l'app è in primo piano. Android non lascia tenere un socket in ascolto ad app
-     * chiusa: è la stessa ragione per cui la sincronizzazione, sul telefono, ascolta solo a
-     * schermata aperta.
-     */
-    @Volatile
-    private var inPrimoPiano = false
-
     override fun enable() {
         settings.setWebEnabled(true)
         // Token nuovo a ogni accensione: è questo a rendere accettabile che viaggi nell'URL,
         // perché un indirizzo copiato la volta scorsa smette di funzionare.
         token.rigenera()
         _status.value = _status.value.copy(enabled = true, lastMessage = null)
-        if (inPrimoPiano) apri()
+        apri()
+        if (_status.value.listening) ingaggiaCustode()
     }
 
     override fun disable() {
         settings.setWebEnabled(false)
+        // Prima si congeda il custode e poi si chiude: l'ordine inverso lascerebbe per un istante
+        // una notifica che dichiara aperta una porta già chiusa.
+        runCatching { keeper.keepAlive(false) }
         chiudi()
         // Spegnere non è mettere in pausa: il token va invalidato, non conservato.
         token.invalida()
         _status.value = _status.value.copy(enabled = false, token = null, lastMessage = null)
     }
 
-    override fun onForeground() {
-        inPrimoPiano = true
-        if (settings.webEnabled.value) apri()
+    override fun resume() {
+        if (!settings.webEnabled.value) return
+        // Già in ascolto: non c'è niente da riaprire, e richiamare il custode qui produrrebbe un
+        // andirivieni con chi lo ha appena avviato.
+        if (_status.value.listening) return
+        apri()
+        if (_status.value.listening) ingaggiaCustode()
     }
 
-    override fun onBackground() {
-        inPrimoPiano = false
-        // Il token **sopravvive**: chi ha già digitato l'indirizzo deve ritrovarlo valido quando
-        // l'app torna davanti, altrimenti ogni rotazione dello schermo lo costringerebbe a
-        // ridigitarlo.
-        chiudi()
+    /**
+     * Il custode può rifiutarsi: da Android 12 un servizio in primo piano avviato mentre l'app non
+     * è davanti viene respinto dal sistema. Non è un motivo per chiudere la porta — finché l'app
+     * resta aperta funziona lo stesso — ma l'utente deve sapere che non reggerà a schermo spento,
+     * invece di scoprirlo quando il browser smette di rispondere.
+     */
+    private fun ingaggiaCustode() {
+        runCatching { keeper.keepAlive(true) }.onFailure { errore ->
+            _status.value = _status.value.copy(
+                lastMessage = "La porta è aperta, ma resterà raggiungibile solo con l'app in " +
+                    "primo piano: ${errore.message ?: "il sistema ha rifiutato il servizio"}."
+            )
+        }
     }
 
     private fun apri() {

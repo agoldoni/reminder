@@ -135,7 +135,8 @@ fun SezioneWebApp(
 
             if (stato.enabled) {
                 Text(
-                    "Vale finché l'app resta aperta: chiudendola la porta si chiude.",
+                    "Resta aperta anche a app chiusa: una notifica fissa te lo ricorda, e da lì " +
+                        "puoi spegnerla.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

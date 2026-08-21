@@ -16,6 +16,7 @@ import it.agoldoni.reminder.sync.LocalIdentity
 import it.agoldoni.reminder.sync.NsdDiscovery
 import it.agoldoni.reminder.sync.SyncEngine
 import it.agoldoni.reminder.sync.SyncService
+import it.agoldoni.reminder.web.ForegroundServiceKeeper
 import it.agoldoni.reminder.web.WebService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -64,7 +65,8 @@ class ReminderApp : Application() {
         webService = WebService(
             dao = database.eventDao(),
             settings = settings,
-            scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+            keeper = ForegroundServiceKeeper(this)
         )
 
         container = AppContainer(
