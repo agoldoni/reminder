@@ -16,6 +16,10 @@ const val SYNC_SERVICE_TYPE = "_promemoria-sync._tcp"
  * **Non può coincidere con `SingleInstance.DEFAULT_PORT` del modulo desktop**: quella è tenuta
  * dall'istanza singola per tutta la vita del processo, e il server di sincronizzazione non
  * riuscirebbe mai a legarsi. È già successo, con 47653.
+ *
+ * Dalla web app locale c'è una terza porta fissa, `WEB_PORT`: sul telefono i due server possono
+ * essere in ascolto nello stesso momento, quindi vale lo stesso vincolo. Chi tocca una di queste
+ * costanti guardi anche le altre due; `PorteTest` in `:desktopApp` le confronta tutte.
  */
 const val SYNC_PORT = 47700
 
