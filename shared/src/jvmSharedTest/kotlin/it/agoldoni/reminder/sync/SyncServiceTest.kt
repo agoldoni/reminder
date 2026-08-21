@@ -34,7 +34,7 @@ class SyncServiceTest {
     private val peers = FakePeerDao()
     private val settings = FakeSettings()
 
-    private fun servizio(listens: Boolean = true, settings: AppSettings = this.settings) =
+    private fun servizio(listensInBackground: Boolean = true, settings: AppSettings = this.settings) =
         SyncService(
             identity = LocalIdentity("id-locale", "Questo dispositivo"),
             peers = peers,
@@ -42,7 +42,7 @@ class SyncServiceTest {
             discovery = discovery,
             settings = settings,
             scope = scope,
-            listens = listens,
+            listensInBackground = listensInBackground,
             // Porta a zero: la sceglie il sistema, così il test non dipende da una porta libera.
             port = 0,
             now = { 2_000L }
@@ -130,17 +130,51 @@ class SyncServiceTest {
     }
 
     @Test
-    fun `chi non ascolta cerca senza annunciarsi`() {
-        val servizio = servizio(listens = false)
+    fun `a schermata chiusa il telefono cerca senza annunciarsi`() {
+        val servizio = servizio(listensInBackground = false)
 
         servizio.enable()
 
-        assertNull(servizio.status.value.listeningPort, "il telefono non tiene un socket aperto")
+        assertNull(servizio.status.value.listeningPort, "ad app chiusa non tiene un socket aperto")
         assertTrue(discovery.running, "ma cerca comunque gli altri")
         assertNull(
             discovery.startedWith,
             "e non si annuncia: chi provasse a contattarlo troverebbe una porta chiusa"
         )
+    }
+
+    /**
+     * Serve sulle reti dove è il **telefono** a non raggiungere il PC — sottoreti diverse con NAT
+     * asimmetrico in mezzo. Se ascoltasse solo il desktop non ci sarebbe modo di associarsi;
+     * potendo partire dal lato che passa, la comunicazione si stabilisce comunque.
+     */
+    @Test
+    fun `mentre la schermata è aperta ascolta anche chi non ascolta in background`() {
+        val servizio = servizio(listensInBackground = false)
+
+        servizio.beginInteractive()
+
+        val porta = assertNotNull(
+            servizio.status.value.listeningPort,
+            "in primo piano un socket in ascolto è lecito anche su Android"
+        )
+        assertEquals(porta, discovery.startedWith?.port, "e ci si annuncia con quella porta")
+    }
+
+    @Test
+    fun `chiudendo la schermata il telefono smette di ascoltare ma resta associato`() {
+        val servizio = servizio(
+            listensInBackground = false,
+            settings = FakeSettings(iniziale = true)
+        )
+        servizio.beginInteractive()
+        assertNotNull(servizio.status.value.listeningPort)
+
+        servizio.endInteractive()
+
+        assertNull(servizio.status.value.listeningPort, "il socket si chiude con la schermata")
+        assertTrue(discovery.running, "ma si continua a cercare, per poter chiamare l'altro")
+        assertNull(discovery.startedWith, "senza annunciare una porta che non è più aperta")
     }
 
     @Test

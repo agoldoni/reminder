@@ -33,8 +33,10 @@ class ReminderApp : Application() {
         val deviceId = localDeviceId(this)
         val database = createAppDatabase(this, deviceId)
         val alarmScheduler = AndroidAlarmScheduler(this)
-        // Il telefono non ascolta: Android non lascia tenere un socket aperto ad app chiusa,
-        // quindi sincronizza chiamando lui, quando è in primo piano (vedi MainActivity).
+        // Ad app chiusa il telefono non ascolta — Android non lascia tenere un socket aperto — e
+        // sincronizza chiamando lui al rientro in primo piano (vedi MainActivity). Mentre la
+        // schermata di sincronizzazione è aperta ascolta anche lui: serve sulle reti dove è il
+        // telefono a non raggiungere il PC.
         val syncScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         syncService = SyncService(
             identity = LocalIdentity(deviceId, localDeviceName(this)),
@@ -43,7 +45,7 @@ class ReminderApp : Application() {
             discovery = NsdDiscovery(this, syncScope),
             settings = AndroidAppSettings(this),
             scope = syncScope,
-            listens = false
+            listensInBackground = false
         )
         syncService.start()
 

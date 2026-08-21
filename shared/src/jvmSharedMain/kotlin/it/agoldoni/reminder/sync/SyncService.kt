@@ -20,10 +20,15 @@ import kotlinx.coroutines.withContext
 /**
  * Mette insieme i pezzi: ricerca sulla rete, ascolto, associazione e giri di sincronizzazione.
  *
- * [listens] distingue i due dispositivi. Il desktop ascolta sempre; su Android le policy di
- * sistema non permettono di tenere un socket aperto ad app chiusa, quindi il telefono chiama e
- * basta, quando è in mano all'utente. Non è una limitazione aggirabile: è il motivo per cui la
- * sincronizzazione è asimmetrica.
+ * [listensInBackground] distingue i due dispositivi, ma **solo a schermata chiusa**. Il desktop
+ * ascolta sempre; Android no, perché le policy di sistema non lasciano tenere un socket aperto ad
+ * app chiusa.
+ *
+ * Mentre la schermata di sincronizzazione è aperta, invece, **ascoltano entrambi**: l'app è in
+ * primo piano per definizione e un socket in ascolto è perfettamente lecito. Non è un dettaglio:
+ * su una rete dove il telefono non riesce a raggiungere il PC — succede fra sottoreti diverse, con
+ * NAT asimmetrico in mezzo — è l'unico modo di stabilire comunque la comunicazione, partendo dal
+ * lato che passa.
  */
 class SyncService(
     private val identity: LocalIdentity,
@@ -32,7 +37,7 @@ class SyncService(
     discovery: Discovery,
     private val settings: AppSettings,
     private val scope: CoroutineScope,
-    private val listens: Boolean,
+    private val listensInBackground: Boolean,
     /** Porta di ascolto; a zero la sceglie il sistema, cosa che serve solo ai test. */
     private val port: Int = SYNC_PORT,
     private val now: () -> Long = ::nowMillis
@@ -78,13 +83,23 @@ class SyncService(
 
     override fun endInteractive() {
         interattivo = false
-        // Chi non ha ancora associato nulla non deve restare in ascolto a schermata chiusa.
-        if (!settings.syncEnabled.value) stop()
+        when {
+            // Chi non ha ancora associato nulla non deve restare in ascolto a schermata chiusa.
+            !settings.syncEnabled.value -> stop()
+            // Su Android il socket in ascolto vale finché l'app è in primo piano: chiusa la
+            // schermata si smette di ascoltare, ma si resta associati e si continua a chiamare.
+            !listensInBackground -> {
+                server?.stop()
+                server = null
+                _status.value = _status.value.copy(listeningPort = null)
+                directory.start(null)
+            }
+        }
     }
 
     private fun avvia() {
         var portaEffettiva: Int? = null
-        if (listens && server == null) {
+        if ((listensInBackground || interattivo) && server == null) {
             val istanza = SyncServer(
                 identity = identity,
                 peers = peers,

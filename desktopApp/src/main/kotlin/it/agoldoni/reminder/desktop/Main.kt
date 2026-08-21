@@ -61,7 +61,7 @@ fun main() {
         discovery = JmdnsDiscovery(syncScope),
         settings = DesktopAppSettings(),
         scope = syncScope,
-        listens = true
+        listensInBackground = true
     )
     syncService.start()
 
