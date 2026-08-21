@@ -12,8 +12,12 @@ const val SYNC_SERVICE_TYPE = "_promemoria-sync._tcp"
  * Porta su cui si mette in ascolto chi può farlo. Fissa, così chi deve digitarla a mano quando la
  * ricerca automatica non passa ha un valore da digitare. Sta qui e non nel trasporto perché la
  * schermata di inserimento manuale, che vive in `commonMain`, la propone come predefinita.
+ *
+ * **Non può coincidere con `SingleInstance.DEFAULT_PORT` del modulo desktop**: quella è tenuta
+ * dall'istanza singola per tutta la vita del processo, e il server di sincronizzazione non
+ * riuscirebbe mai a legarsi. È già successo, con 47653.
  */
-const val SYNC_PORT = 47653
+const val SYNC_PORT = 47700
 
 /** Attributo TXT con cui ogni annuncio porta la propria identità. */
 const val TXT_DEVICE_ID = "deviceId"

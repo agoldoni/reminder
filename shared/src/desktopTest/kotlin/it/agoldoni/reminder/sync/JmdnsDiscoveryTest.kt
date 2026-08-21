@@ -55,13 +55,34 @@ class JmdnsDiscoveryTest {
         // L'annuncio ha circolato davvero, come dimostra la riga trovata dal browser: se il filtro
         // non funzionasse, l'eco del proprio servizio sarebbe nell'elenco anche qui.
         assertTrue(
-            advertiser.peers.value.none { it.deviceId == deviceId },
-            "il proprio annuncio non deve comparire fra i dispositivi trovati"
+            advertiser.peers.value.none { it.displayName == nome },
+            "il proprio annuncio non deve comparire fra i dispositivi trovati; il confronto è sul " +
+                "nome e non sul deviceId perché sul proprio servizio jmdns non riporta il TXT, " +
+                "e un controllo sull'identità passerebbe senza provare nulla"
         )
     }
 
     private fun hasNetwork(): Boolean =
         runCatching { !siteAddress().isLoopbackAddress }.getOrDefault(false)
+
+    /**
+     * L'indirizzo scelto dev'essere quello con cui si esce verso la rete, non il primo che capita:
+     * su una macchina con Docker o con dei bridge la scansione delle interfacce restituirebbe
+     * `docker0`, e l'annuncio finirebbe su una rete dove non c'è nessuno.
+     */
+    @Test
+    fun `l'indirizzo scelto è quello della rotta verso la rete locale`() {
+        if (!hasNetwork()) {
+            println("nessuna interfaccia di rete utilizzabile: test saltato")
+            return
+        }
+        val scelto = siteAddress()
+        val atteso = java.net.DatagramSocket().use {
+            it.connect(java.net.InetSocketAddress("192.0.2.1", 9))
+            it.localAddress
+        }
+        assertEquals(atteso.hostAddress, scelto.hostAddress)
+    }
 
     private companion object {
         const val TEST_PORT = 54321

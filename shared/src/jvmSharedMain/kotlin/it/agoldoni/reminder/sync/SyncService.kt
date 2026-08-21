@@ -5,6 +5,7 @@ import it.agoldoni.reminder.data.PeerEntity
 import it.agoldoni.reminder.platform.AppSettings
 import it.agoldoni.reminder.platform.nowMillis
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -14,6 +15,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 /**
  * Mette insieme i pezzi: ricerca sulla rete, ascolto, associazione e giri di sincronizzazione.
@@ -136,15 +138,22 @@ class SyncService(
         _status.value = _status.value.copy(enabled = false)
     }
 
-    override suspend fun syncNow() {
-        if (!settings.syncEnabled.value) return
+    /**
+     * Le chiamate di rete sono **bloccanti** e chi le invoca arriva quasi sempre da
+     * `viewModelScope`, che gira su `Dispatchers.Main`: senza questo spostamento l'app Android si
+     * pianta finché la connessione non va in timeout, e il sistema la chiude per ANR. Non è un
+     * caso di bordo — è successo al primo tentativo di associazione su un telefono vero, ed è
+     * invisibile ai test JVM, dove `Dispatchers.Main` è un dispatcher di prova senza vincoli.
+     */
+    override suspend fun syncNow(): Unit = withContext(Dispatchers.IO) {
+        if (!settings.syncEnabled.value) return@withContext
         syncLock.withLock {
             val associati = peers.list()
             if (associati.isEmpty()) {
                 _status.value = _status.value.copy(
                     lastMessage = "Nessun dispositivo associato."
                 )
-                return
+                return@withLock
             }
             _status.value = _status.value.copy(syncing = true, lastMessage = null)
             var ultimoMessaggio: String? = null
@@ -198,7 +207,7 @@ class SyncService(
     override suspend fun pair(
         peer: DiscoveredPeer,
         approval: PairingApprovalRequest
-    ): PairingResult {
+    ): PairingResult = withContext(Dispatchers.IO) {
         val esito = SyncClient.pair(
             host = peer.host,
             port = peer.port,
@@ -206,10 +215,14 @@ class SyncService(
             approval = { code, chi -> approval(code, chi.displayName) },
             nowMillis = now()
         )
-        return when (esito) {
+        when (esito) {
             is PairingOutcome.Paired -> {
                 val salvato = esito.peer.copy(lastHost = peer.host, lastPort = peer.port)
                 peers.upsert(salvato)
+                // Un indirizzo digitato non porta con sé un deviceId, quindi l'elenco dei trovati
+                // non può accorgersi da solo che ora è associato: resterebbe lì con il pulsante
+                // «Associa» accanto al dispositivo appena associato.
+                if (peer.source == PeerSource.MANUAL) directory.removeManual(peer)
                 // Associarsi è il gesto con cui l'utente accende la sincronizzazione.
                 enable()
                 PairingResult.Paired(salvato.toPairedPeer())

@@ -359,7 +359,7 @@ piattaforma), **UI**, **Test**, **Doc**.
 | T-27 | ✅ **fatto** — 10 test: struttura ODS (mimetype STORED per primo, manifest, contenuto), escape XML e le maschere di data | Test | 1,0 | T-15, T-23 |
 | T-28 | ✅ **fatto** — 13 test: autostart, istanza singola e scheduler desktop (scadenza, annullamento, riprogrammazione, bootstrap, azioni Completa e Posticipa) con tempo virtuale | Test | 1,0 | T-14, T-23 |
 | T-29 | Test di integrazione: due istanze desktop che si scoprono, si associano e convergono | Test | 1,5 | T-21 |
-| T-30 | Collaudo manuale telefono ↔ desktop su rete reale (inclusi casi offline e conflitto) | Test | 1,0 | T-22 |
+| T-30 | ⏳ **parziale (0,6 di 1,0)** — su Redmi Note 7 + desktop: migrazione dei dati reali, associazione con confronto a vista (stesso codice sui due schermi), sincronizzazione in **entrambi** i versi, persistenza di associazione e watermark. **Il trasporto è passato da `adb reverse`, non dalla rete**: telefono e PC sono su sottoreti diverse e il telefono non raggiunge il PC. Restano da collaudare su rete vera: scoperta mDNS telefono ↔ PC, casi offline e conflitto | Test | 1,0 | T-22 |
 | T-31 | ✅ **fatto** — su device: avvio, creazione, allarme programmato e annullato, Fatti, eliminazione, dialog Info, aggiornamento in place dalla versione pre-KMP con dati conservati, export/share (ODS aperto in LibreOffice) e **snooze da notifica** (notifica puntuale, azione +5 min che riprogramma e chiude). La riprogrammazione al boot è coperta da un test strumentato: `BOOT_COMPLETED` è un broadcast protetto e resta verificabile solo con un riavvio vero | Test | 1,0 | T-21, T-24 |
 | T-32 | ⏳ **in corso (0,7 di 1,0)** — `README.md` e `CLAUDE.md` aggiornati a moduli, build desktop e AppImage; i requisiti di rete della sync restano da scrivere quando la tranche 2 esisterà | Doc | 1,0 | T-24 |
 | T-33 | Guida a pairing e rete + note di distribuzione AppImage | Doc | 1,0 | T-30 |
@@ -423,11 +423,11 @@ device o emulatore Android.
 | TC-08 | Unit | Scheduler desktop: scadenza futura programmata, scadenza passata → recupero all'avvio, snooze +5/+60 | Alta |
 | TC-09 | Unit | Autostart: creazione e rimozione del `.desktop`; secondo avvio che non duplica il processo | Media |
 | TC-10 | Integrazione | Due istanze desktop sulla stessa macchina: discovery → pairing → convergenza degli eventi | Alta |
-| TC-11 | Manuale | Telefono ↔ desktop su rete reale: creazione, modifica, cancellazione in entrambe le direzioni | Alta |
+| TC-11 | ~ Manuale | Telefono ↔ desktop: creazione verificata in **entrambe** le direzioni (via `adb reverse`, non su rete vera); modifica e cancellazione restano da provare | Alta |
 | TC-12 | Manuale | Modifiche offline su entrambi i lati, poi rientro in rete: convergenza senza perdite | Alta |
 | TC-13 | Manuale | Notifica desktop a finestra chiusa e ad app riavviata dopo la scadenza | Alta |
 | TC-14 | Manuale | Android: allarme, snooze da notifica, riavvio device, export/share, aggiornamento sopra l'installazione esistente con dati conservati | Alta |
-| TC-15 | Manuale | Rete con multicast bloccato: messaggio chiaro e fallback manuale funzionante | Media |
+| TC-15 | ✅ Manuale | Rete con multicast bloccato: il fallback manuale ha funzionato — è la strada con cui è stata fatta l'associazione telefono ↔ desktop | Media |
 
 ### Definition of Done
 

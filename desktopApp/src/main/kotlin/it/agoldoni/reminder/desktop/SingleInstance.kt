@@ -42,6 +42,7 @@ class SingleInstance(private val port: Int = DEFAULT_PORT) {
     }
 
     companion object {
+        /** Distinta da `SYNC_PORT`: quella serve al server di sincronizzazione. */
         const val DEFAULT_PORT = 47653
         private const val BACKLOG = 4
     }

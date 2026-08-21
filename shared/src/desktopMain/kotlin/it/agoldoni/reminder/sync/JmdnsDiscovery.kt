@@ -8,8 +8,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.io.IOException
+import java.net.DatagramSocket
 import java.net.Inet4Address
 import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.util.concurrent.ConcurrentHashMap
 import javax.jmdns.JmDNS
@@ -40,6 +42,14 @@ class JmdnsDiscovery(
     private var listener: ServiceListener? = null
     private var ownDeviceId: String? = null
 
+    /**
+     * Nome qualificato del proprio annuncio. Il solo `deviceId` non basta a riconoscersi: sul
+     * proprio servizio jmdns non riporta il record TXT, quindi l'identità arriva nulla e il filtro
+     * non scatterebbe. Il nome, invece, lo si conosce per averlo registrato — e va letto **dopo**
+     * `registerService`, perché in caso di conflitto jmdns lo cambia.
+     */
+    private var ownServiceName: String? = null
+
     override fun start(advertisement: Advertisement?) {
         if (jmdns != null) return
         ownDeviceId = advertisement?.deviceId
@@ -49,7 +59,11 @@ class JmdnsDiscovery(
                 // risolve spesso in 127.0.1.1 da /etc/hosts: l'annuncio non uscirebbe dalla macchina.
                 val instance = JmDNS.create(siteAddress(), advertisement?.displayName)
                 jmdns = instance
-                advertisement?.let { instance.registerService(serviceInfo(it)) }
+                advertisement?.let {
+                    val info = serviceInfo(it)
+                    instance.registerService(info)
+                    ownServiceName = info.qualifiedName
+                }
                 listener = browseListener().also { instance.addServiceListener(JMDNS_SERVICE_TYPE, it) }
                 _status.value = DiscoveryStatus.Searching
             } catch (error: IOException) {
@@ -67,6 +81,7 @@ class JmdnsDiscovery(
         jmdns = null
         val current = listener
         listener = null
+        ownServiceName = null
         scope.launch {
             runCatching {
                 current?.let { instance.removeServiceListener(JMDNS_SERVICE_TYPE, it) }
@@ -102,8 +117,10 @@ class JmdnsDiscovery(
 
         override fun serviceResolved(event: ServiceEvent) {
             val info = event.info ?: return
+            // Il proprio annuncio torna indietro come quello degli altri: va scartato. Si guarda
+            // prima il nome, che c'è sempre, e poi l'identità, che sul proprio servizio manca.
+            if (info.qualifiedName == ownServiceName) return
             val deviceId = info.getPropertyString(TXT_DEVICE_ID)
-            // Il proprio annuncio torna indietro come quello degli altri: va scartato.
             if (deviceId != null && deviceId == ownDeviceId) return
             val host = info.inet4Addresses.firstOrNull()?.hostAddress
                 ?: info.inetAddresses.firstOrNull()?.hostAddress
@@ -129,13 +146,31 @@ class JmdnsDiscovery(
 }
 
 /**
- * Primo indirizzo IPv4 di un'interfaccia attiva e non di loopback: è quello su cui gli altri
- * dispositivi della rete possono davvero raggiungerci.
+ * L'indirizzo con cui questa macchina esce verso la rete locale.
+ *
+ * Lo si chiede al sistema aprendo un socket UDP «connesso» — che non manda nulla, ma costringe il
+ * kernel a scegliere la rotta e quindi l'interfaccia. È l'unico modo affidabile: scandire le
+ * interfacce e prendere la prima attiva sembra equivalente e non lo è, perché su una macchina con
+ * Docker o con dei bridge la prima è `docker0`. `NetworkInterface.isVirtual()` non aiuta a
+ * escluderle: è vero solo per le sottointerfacce tipo `eth0:1`, non per i bridge. Legarsi a quella
+ * sbagliata significa annunciarsi su una rete dove non c'è nessuno.
+ *
+ * La scansione resta come ripiego per la macchina senza rotta di default, dove non c'è comunque
+ * nessuno da trovare.
  */
 internal fun siteAddress(): InetAddress =
-    NetworkInterface.getNetworkInterfaces().asSequence()
-        .filter { it.isUp && !it.isLoopback && !it.isVirtual }
-        .flatMap { it.inetAddresses.asSequence() }
-        .filterIsInstance<Inet4Address>()
-        .firstOrNull { !it.isLinkLocalAddress }
+    runCatching {
+        DatagramSocket().use { socket ->
+            socket.connect(InetSocketAddress(ROUTE_PROBE, 9))
+            socket.localAddress.takeIf { it is Inet4Address && !it.isAnyLocalAddress }
+        }
+    }.getOrNull()
+        ?: NetworkInterface.getNetworkInterfaces().asSequence()
+            .filter { it.isUp && !it.isLoopback }
+            .flatMap { it.inetAddresses.asSequence() }
+            .filterIsInstance<Inet4Address>()
+            .firstOrNull { !it.isLinkLocalAddress }
         ?: InetAddress.getLocalHost()
+
+/** TEST-NET-1 (RFC 5737): non esiste e non viene contattato, serve solo a far scegliere la rotta. */
+private const val ROUTE_PROBE = "192.0.2.1"
