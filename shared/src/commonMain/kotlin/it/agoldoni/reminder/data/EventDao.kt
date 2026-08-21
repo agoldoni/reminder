@@ -56,9 +56,12 @@ interface EventDao {
     suspend fun getAllOpen(): List<EventEntity>
 
     /**
-     * Tutto ciò che è cambiato dopo [sinceMillis], tombstone compresi: è la sorgente del `PUSH`.
-     * L'ordine per `updatedAt` permette di avanzare il watermark man mano che si invia.
+     * Tutto ciò che è cambiato **da** [sinceMillis] in poi, tombstone compresi: è la sorgente del
+     * `PUSH`. Il confronto include l'estremo di proposito: il watermark è il `updatedAt` più
+     * recente già ricevuto, e nello stesso millisecondo può essercene un altro che al momento
+     * dello scambio precedente non era ancora stato scritto. Escluderlo lo perderebbe per sempre;
+     * rispedire ogni volta l'ultimo millisecondo costa un evento e il merge lo scarta da sé.
      */
-    @Query("SELECT * FROM events WHERE updatedAt > :sinceMillis ORDER BY updatedAt ASC")
+    @Query("SELECT * FROM events WHERE updatedAt >= :sinceMillis ORDER BY updatedAt ASC")
     suspend fun changedSince(sinceMillis: Long): List<EventEntity>
 }

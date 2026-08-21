@@ -1,7 +1,7 @@
 # Stato del lavoro — port desktop Linux
 
 **Aggiornato:** 2026-08-21
-**Branch:** `feature/desktop-linux` (12 commit, non ancora unito in `main`)
+**Branch:** `feature/desktop-linux` (13 commit, non ancora unito in `main`)
 
 ---
 
@@ -27,13 +27,15 @@ Compose Multiplatform, ed è distribuibile come AppImage.
 | Test di migrazione (T-26) | ✅ 4 test in `desktopTest`, senza emulatore |
 | Discovery mDNS (T-18) | ✅ fatto, round-trip reale verificato su desktop e cablaggio verificato su emulatore |
 | Associazione e canale cifrato (T-19) | ✅ fatto, schema v4 con la tabella `peers` |
-| Replica, integrazione, UI (T-20…T-22) | ⏳ da fare |
+| Motore di replica (T-20) | ✅ fatto, convergenza verificata anche su due database veri |
+| Integrazione e UI (T-21, T-22) | ⏳ da fare |
 
-**Avanzamento:** 33,2 gg completati su 46,0 stimati. Restano **12,8 gg**, tutti di tranche 2.
+**Avanzamento:** 36,2 gg completati su 46,0 stimati. Restano **9,8 gg**, tutti di tranche 2.
 
-**61 test automatici** (prima non ce n'erano): export ODS, formattazione date, scheduler desktop,
+**82 test automatici** (prima non ce n'erano): export ODS, formattazione date, scheduler desktop,
 autostart, istanza singola, migrazioni di schema, elenco dei dispositivi, round-trip mDNS reale,
-primitive crittografiche, associazione e sessione cifrata; strumentati su emulatore la
+primitive crittografiche, associazione e sessione cifrata, regola di merge, convergenza fra due
+dispositivi e scambio completo su due database Room veri; strumentati su emulatore la
 riprogrammazione al boot e il cablaggio di `NsdDiscovery`.
 
 ## Come si lavora
@@ -104,12 +106,48 @@ ANDROID_SERIAL=emulator-5554 ./gradlew :shared:connectedDebugAndroidTest   # tes
   che richiederebbe un portachiavi diverso per ogni piattaforma.
 - Come per la scoperta, **nulla è ancora collegato all'app**: `peerDao` non è nell'`AppContainer`,
   non c'è socket in ascolto e non c'è UI. Il server e il cablaggio sono T-21, l'interfaccia T-22.
+  Vale anche per il motore di replica: esiste ed è verificato, ma nessuno lo chiama.
+
+## Che cosa c'è nel motore di replica
+
+Due scelte sembrano dettagli e sono invece il motivo per cui la replica non perde dati. Entrambe
+sono emerse da test falliti, non dal disegno iniziale.
+
+1. **`changedSince` include l'estremo** (`>=`, non `>`). Il watermark è l'`updatedAt` più recente
+   già ricevuto; nello stesso millisecondo può esserci un altro evento, scritto subito dopo lo
+   scambio precedente. Escluderlo lo perderebbe **per sempre**. Rispedire ogni volta l'ultimo
+   millisecondo costa un evento, che il merge scarta da sé.
+2. **I due lati si scambiano prima le domande e poi le risposte.** Chi rispondesse dopo aver
+   applicato il lotto dell'altro gli rimanderebbe indietro i suoi stessi eventi; il watermark
+   finirebbe per riflettere l'orologio del destinatario e le modifiche del dispositivo con
+   l'orologio indietro non partirebbero mai più. Per lo stesso motivo il watermark è `Push.upTo`,
+   l'istante dichiarato dal **mittente**, e non il massimo `updatedAt` del lotto — che può
+   contenere eventi nati altrove.
+
+Il resto:
+
+- `resolveMerge` è una **funzione pura**, separata dall'applicazione: la convergenza si verifica
+  senza database né rete.
+- A parità di `updatedAt` vince la firma testuale maggiore del contenuto. Serve un criterio che dia
+  lo **stesso** vincitore su entrambi i dispositivi: «vince il remoto» darebbe risultati opposti sui
+  due lati, cioè esattamente il modo di non convergere.
+- Un tombstone non è un caso a parte: è un evento con `deleted = true`, e per questo una
+  cancellazione non risorge.
+- L'idempotenza non viene da un controllo sui duplicati, ma dal fatto che il confronto è per `uuid`
+  e la regola scarta ciò che non è più recente.
+- Dopo il merge gli allarmi vengono rimessi in riga: annullati **e poi** riprogrammati, perché un
+  evento diventato completato o cancellato deve perdere la sveglia che aveva.
+
+**Il clock skew resta un rischio accettato sulla regola LWW**: un dispositivo con l'orologio avanti
+vince anche quando è anteriore. Risolverlo davvero richiede orologi vettoriali; con due dispositivi
+il danno si limita a una modifica concorrente allo stesso evento.
 
 ## Prossimo passo
 
-**T-20 — `SyncProtocol` + `SyncEngine`**: merge LWW, tombstone, watermark, idempotenza, e con essi
-`upsertFromRemote()`. Poi T-21 (integrazione trasporto ↔ engine, con il socket in ascolto sul
-desktop) → T-22 (UI di stato e associazione), con i test T-25, T-29 e T-30 a seguire.
+**T-21 — integrazione trasporto ↔ engine**: socket in ascolto sul desktop, sincronizzazione in
+foreground su Android, `peerDao` e `Discovery` nell'`AppContainer`, gestione degli errori. È il
+punto in cui tutto quello che c'è viene finalmente collegato all'app. Poi T-22 (UI di associazione
+e stato), con i test T-25, T-29 e T-30.
 
 Il dettaglio task per task è in [phase-3-implementation-plan.md](phase-3-implementation-plan.md).
 

@@ -58,7 +58,7 @@ class FakeEventDao(initial: List<EventEntity> = emptyList()) : EventDao {
         state.value.visible().filterNot { it.completed }.sortedBy { it.dateTimeMillis }
 
     override suspend fun changedSince(sinceMillis: Long): List<EventEntity> =
-        state.value.filter { it.updatedAt > sinceMillis }.sortedBy { it.updatedAt }
+        state.value.filter { it.updatedAt >= sinceMillis }.sortedBy { it.updatedAt }
 
     private fun edit(id: Long, transform: (EventEntity) -> EventEntity) {
         state.value = state.value.map { if (it.id == id) transform(it) else it }

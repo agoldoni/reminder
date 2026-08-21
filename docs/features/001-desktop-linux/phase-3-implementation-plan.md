@@ -174,13 +174,13 @@ essere certo che nessun altro sulla rete legga o alteri i miei promemoria.
 Come utente voglio che le modifiche fatte offline si allineino da sole al primo rientro in rete
 per non dover ricordare cosa ho cambiato e dove.
 
-- [ ] Un evento creato su un dispositivo compare sull'altro alla prima sincronizzazione utile.
-- [ ] Un evento modificato aggiorna l'altro senza duplicarsi.
-- [ ] Un evento eliminato viene eliminato anche sull'altro e non riappare in seguito.
-- [ ] Modifiche concorrenti allo stesso evento convergono allo stesso risultato su entrambi i
+- [x] Un evento creato su un dispositivo compare sull'altro alla prima sincronizzazione utile.
+- [x] Un evento modificato aggiorna l'altro senza duplicarsi.
+- [x] Un evento eliminato viene eliminato anche sull'altro e non riappare in seguito.
+- [x] Modifiche concorrenti allo stesso evento convergono allo stesso risultato su entrambi i
       dispositivi, senza duplicati né perdita degli altri eventi.
-- [ ] Dopo una sincronizzazione che tocca eventi futuri, gli allarmi locali sono riprogrammati.
-- [ ] Gli eventi presenti prima dell'aggiornamento sopravvivono alla migrazione v2 → v3 intatti.
+- [x] Dopo una sincronizzazione che tocca eventi futuri, gli allarmi locali sono riprogrammati.
+- [x] Gli eventi presenti prima dell'aggiornamento sopravvivono alle migrazioni di schema intatti.
 
 ### US-007 · Vedere lo stato della sincronizzazione
 **Priorità:** Should Have
@@ -285,9 +285,13 @@ socket server con l'app chiusa: il telefono sincronizza all'apertura e al rientr
 | `PAIR_BEGIN` / `PAIR_KEY` | ↔ | scambio delle chiavi pubbliche effimere (ECDH P-256) | No (è l'atto di associarsi) |
 | `PAIR_CONFIRM` / `PAIR_DONE` | ↔ | prova incrociata di aver ricavato lo stesso segreto, dopo la conferma dell'utente | No |
 | `SESSION_BEGIN` / `SESSION_ACCEPT` / `SESSION_CONFIRM` | ↔ | nonce e autenticazione reciproca col segreto dell'associazione; da qui il canale è cifrato | Sì |
-| `PULL(since)` | → | richiesta degli eventi modificati dopo `since` | Sì |
-| `PUSH(events)` | → | invio degli eventi modificati localmente | Sì |
-| `ACK(highWatermark)` | ← | conferma e nuovo watermark | Sì |
+| `PULL(since)` | → | richiesta degli eventi modificati **da** `since` in poi, estremo incluso | Sì |
+| `PUSH(events, upTo)` | → | eventi richiesti, più l'istante fino al quale il mittente garantisce di aver dato tutto | Sì |
+| `ACK(applied)` | ← | conferma che il lotto è stato applicato | Sì |
+
+Il watermark non viaggia nell'`ACK` ma in `upTo` dentro il `PUSH`: è chi manda a dichiarare fin
+dove ha dato, nel proprio tempo. Ricavarlo dal massimo `updatedAt` del lotto sarebbe sbagliato,
+perché il lotto può contenere eventi nati su un altro dispositivo con un altro orologio.
 
 Trasporto: socket TCP su canale cifrato con il segreto stabilito in fase di pairing,
 serializzazione `kotlinx.serialization`. Versione di protocollo esplicita nel primo messaggio:
@@ -345,7 +349,7 @@ piattaforma), **UI**, **Test**, **Doc**.
 | T-17 | ✅ **fatto** — schema v3 (`uuid` con indice unico, `updatedAt`, `deleted`/`deletedAt`, `origin`), `migration2to3(deviceId)`, DAO con soft-delete e letture filtrate, `changedSince()`, `getByUuid()`, identità del dispositivo persistita per piattaforma. `upsertFromRemote()` è rinviata a T-20, dove la regola LWW che la definisce viene scritta e testata | Core | 1,5 | T-08, T-04 |
 | T-18 | ✅ **fatto** — contratto `Discovery` in `commonMain` su `_promemoria-sync._tcp`, `NsdDiscovery` (multicast lock + risoluzioni serializzate), `JmdnsDiscovery` (indirizzo di sito esplicito), `PeerDirectory` che unisce trovati e digitati. 9 unit test + 1 round-trip mDNS reale su desktop + 1 strumentato sul cablaggio Android | Core | 1,5 | T-17 |
 | T-19 | ✅ **fatto** — tabella `peers` (schema v4, `MIGRATION_3_4`), ECDH P-256 effimero, HKDF-SHA256 verificato su RFC 5869, associazione con codice **confrontato a vista** (vedi nota sotto), canale AES-256-GCM con chiavi direzionali e sequenza autenticata, rifiuto dei non associati e delle versioni incompatibili. 19 test | Core | 2,5 | T-18 |
-| T-20 | `SyncProtocol` + `SyncEngine`: merge LWW, tombstone, watermark, idempotenza | Core | 3,0 | T-17 |
+| T-20 | ✅ **fatto** — `resolveMerge` (LWW con tie-break deterministico), `SyncEngine` con riprogrammazione degli allarmi, `SyncConversation` sopra il canale cifrato, `upsertFromRemote` realizzata come merge nel motore. Il watermark è dichiarato dal mittente e i due lati si scambiano prima le domande: vedi la nota sul clock skew | Core | 3,0 | T-17 |
 | T-21 | Integrazione trasporto ↔ engine: riprogrammazione allarmi, gestione errori, sync in foreground su Android | Core | 1,5 | T-19, T-20 |
 | T-22 | Schermata stato sincronizzazione: peer, ultimo sync, errori, sync manuale, dissociazione | UI | 2,0 | T-21 |
 | T-23 | ✅ **fatto** — `commonTest`, `jvmSharedTest`, `desktopTest`, `desktopApp/src/test` e `androidInstrumentedTest`, quest'ultimo eseguito su emulatore | Test | 0,5 | T-02 |
@@ -362,14 +366,14 @@ piattaforma), **UI**, **Test**, **Doc**.
 
 **Stima totale: 46,0 giorni/uomo** (46,5 iniziali − 0,5 di T-03, rimosso)
 **Breakdown:** Infra 7,5 gg · Core 20,5 gg · UI 7,0 gg · Test 9,0 gg · Doc 2,0 gg
-**Già completati:** 33,2 gg — **tranche 1 completa** salvo 0,3 gg di documentazione che dipende dalla sincronizzazione; della tranche 2 sono chiusi lo schema v3 (T-17), i test di migrazione (T-26), la scoperta dei dispositivi (T-18) e l'associazione con canale cifrato (T-19). **Restano 12,8 gg.**
+**Già completati:** 36,2 gg — **tranche 1 completa** salvo 0,3 gg di documentazione che dipende dalla sincronizzazione; della tranche 2 sono chiusi lo schema v3 (T-17), i test di migrazione (T-26), la scoperta dei dispositivi (T-18), l'associazione con canale cifrato (T-19) e il motore di replica (T-20). **Restano 9,8 gg.**
 
 **Due tranche:**
 
 | Tranche | Contenuto | Task | Stima |
 |---|---|---|---:|
 | **1 — App desktop** | Tutto tranne la sincronizzazione: desktop completo, installabile, con notifiche, tray, autostart, export | T-01…T-16 (T-03 escluso), T-23, T-24, T-27, T-28, T-31, T-32 | **27,5 gg** (24,0 residui) |
-| **2 — Sincronizzazione** | Schema v3, discovery, pairing, replica, UI di stato, collaudo | T-17…T-22, T-25, T-26, T-29, T-30, T-33 | **18,5 gg** (12,5 residui) |
+| **2 — Sincronizzazione** | Schema v3, discovery, pairing, replica, UI di stato, collaudo | T-17…T-22, T-25, T-26, T-29, T-30, T-33 | **18,5 gg** (9,5 residui) |
 
 > **Stato al 2026-08-20:** completati T-01, T-02, T-04…T-09, T-11…T-14, la parte centrale di
 > T-10 e metà di T-28 (**18,5 gg**). L'app desktop si avvia, apre il database, mostra gli eventi,
@@ -409,9 +413,9 @@ device o emulatore Android.
 
 | ID | Tipo | Descrizione | Priorità |
 |---|---|---|---|
-| TC-01 | Unit | Modifiche concorrenti allo stesso evento: entrambi i lati convergono sullo stesso stato (LWW) | Alta |
-| TC-02 | Unit | Evento cancellato su un lato non riappare dopo due cicli di sync | Alta |
-| TC-03 | Unit | Due `PUSH` identici consecutivi non duplicano eventi (idempotenza) | Alta |
+| TC-01 | ✅ Unit | Modifiche concorrenti allo stesso evento: entrambi i lati convergono sullo stesso stato (LWW) | Alta |
+| TC-02 | ✅ Unit | Evento cancellato su un lato non riappare dopo due cicli di sync | Alta |
+| TC-03 | ✅ Unit | Due `PUSH` identici consecutivi non duplicano eventi (idempotenza) | Alta |
 | TC-04 | ✅ Unit | Peer con versione di protocollo diversa viene rifiutato con errore esplicito | Alta |
 | TC-05 | ✅ Unit | Peer non associato rifiutato; codice non confermato e segreto diverso rifiutati | Alta |
 | TC-06 | ✅ Unit (JVM) | Migrazione 2→3: eventi v2 conservati, `uuid` popolati e univoci, `updatedAt` valorizzato | Alta |
@@ -449,7 +453,7 @@ device o emulatore Android.
 | Regressioni sull'app Android durante lo spostamento dei moduli | Media | Alto | T-02 senza modifiche funzionali + TC-14 come cancello prima di proseguire |
 | ~~Tray assente se il desktop target è GNOME Shell~~ **decaduto**: target confermato Cinnamon/X11, tray nativa | — | — | — |
 | `appimagetool` non installato sulla macchina di build | Alta (certa oggi) | Basso | Procurarlo in T-24; è un AppImage a sua volta, nessuna installazione di sistema |
-| Clock skew fra dispositivi falsa la regola LWW | Bassa | Medio | Timestamp UTC + tolleranza; in T-20 valutare un contatore di versione per evento |
+| Clock skew fra dispositivi falsa la regola LWW | Bassa | Medio | **Valutato in T-20, come previsto.** Il rischio si è rivelato doppio. *Sul watermark* era grave e ora è **eliminato per costruzione**: ogni lato chiede con il proprio metro, il watermark è l'istante dichiarato dal mittente, e i due si scambiano prima le domande così che nessuno rimandi indietro ciò che ha appena ricevuto. *Sulla regola LWW* resta: un dispositivo con l'orologio avanti vince anche quando è anteriore. Un contatore di versione per evento non lo risolverebbe — servirebbero orologi vettoriali — e con due dispositivi il danno si limita a una modifica concorrente allo stesso evento. **Accettato consapevolmente** |
 | Il totale di 46,5 gg risulta insostenibile | Media | Medio | Consegna a tranche: la tranche 1 (28,0 gg) è autonoma e già utile |
 
 ---

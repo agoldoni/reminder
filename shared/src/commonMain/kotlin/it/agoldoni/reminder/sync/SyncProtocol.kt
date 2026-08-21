@@ -76,3 +76,51 @@ data class SessionAccept(val nonce: String, val mac: String) : SyncMessage
 @Serializable
 @SerialName("session-confirm")
 data class SessionConfirm(val mac: String) : SyncMessage
+
+// --- Replica -----------------------------------------------------------------------------------
+//
+// Ogni lato tiene **un solo** watermark per peer: fin dove ha ricevuto da quel peer, espresso nel
+// tempo di quel peer. È il lato che riceve a chiedere, e il push è sempre la risposta a un pull.
+//
+// Questo elimina per costruzione l'effetto che il clock skew avrebbe su un watermark unico
+// condiviso: se l'altro dispositivo avesse l'orologio avanti di un'ora, un watermark comune
+// salterebbe in avanti e le modifiche locali fatte «prima» non verrebbero più inviate. Chiedendo
+// ciascuno con il proprio metro, il problema non si pone.
+
+/** Manda tutto ciò che da te è cambiato da [since] in poi, estremo incluso, tombstone compresi. */
+@Serializable
+@SerialName("pull")
+data class Pull(val since: Long) : SyncMessage
+
+/**
+ * Gli eventi richiesti, più l'istante fino al quale il **mittente** garantisce di aver dato tutto.
+ * È [upTo] a diventare il watermark di chi riceve, non il massimo `updatedAt` del lotto: nel lotto
+ * possono esserci eventi nati altrove, con l'orologio di un altro dispositivo, e prenderli come
+ * riferimento farebbe rientrare dalla finestra il problema del clock skew.
+ */
+@Serializable
+@SerialName("push")
+data class Push(val events: List<SyncEvent>, val upTo: Long) : SyncMessage
+
+/** Applicati [applied] eventi: il turno può passare all'altro lato. */
+@Serializable
+@SerialName("ack")
+data class Ack(val applied: Int) : SyncMessage
+
+/**
+ * Un evento come viaggia sul filo. Deliberatamente **non** è `EventEntity`: l'id è locale e non
+ * ha senso altrove, e il formato di scambio non deve cambiare ogni volta che cambia lo schema.
+ */
+@Serializable
+data class SyncEvent(
+    val uuid: String,
+    val title: String,
+    val description: String? = null,
+    val dateTimeMillis: Long,
+    val advanceMinutes: Int = 0,
+    val completed: Boolean = false,
+    val updatedAt: Long,
+    val deleted: Boolean = false,
+    val deletedAt: Long? = null,
+    val origin: String = ""
+)
