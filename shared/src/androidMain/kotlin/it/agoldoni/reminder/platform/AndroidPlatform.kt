@@ -1,6 +1,8 @@
 package it.agoldoni.reminder.platform
 
 import android.content.Context
+import android.os.Build
+import android.provider.Settings
 import androidx.room.Room
 import androidx.sqlite.driver.AndroidSQLiteDriver
 import it.agoldoni.reminder.alarm.AlarmScheduler as AndroidAlarms
@@ -35,6 +37,15 @@ fun localDeviceId(context: Context): String = synchronized(deviceIdLock) {
     prefs.getString(DEVICE_ID_KEY, null)
         ?: newUuid().also { prefs.edit().putString(DEVICE_ID_KEY, it).apply() }
 }
+
+/**
+ * Nome con cui questo dispositivo si presenta sulla rete. `device_name` è quello che l'utente ha
+ * scelto nelle impostazioni; il modello è il ripiego quando non è stato impostato.
+ */
+fun localDeviceName(context: Context): String =
+    Settings.Global.getString(context.applicationContext.contentResolver, "device_name")
+        ?.takeIf { it.isNotBlank() }
+        ?: Build.MODEL
 
 class AndroidAlarmScheduler(private val context: Context) : AlarmScheduler {
     override fun schedule(event: EventEntity) = AndroidAlarms.schedule(context, event)

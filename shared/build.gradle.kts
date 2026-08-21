@@ -57,6 +57,8 @@ kotlin {
             dependencies {
                 // Su desktop SQLite non è garantito dal sistema: driver bundled
                 implementation(libs.sqlite.bundled)
+                // Su Android mDNS lo fa NsdManager, qui serve una libreria: jmdns
+                implementation(libs.jmdns)
             }
         }
     }

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  I permessi che servono al codice di questo modulo stanno qui, non nell'app: il manifest merger
+  li propaga a :androidApp e, cosa che il manifest dell'app non farebbe, anche all'APK dei test
+  strumentati — senza INTERNET, NsdManager risponde con SecurityException.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Sincronizzazione punto-punto sulla rete locale. Il multicast lock serve a mDNS:
+         senza CHANGE_WIFI_MULTICAST_STATE il Wi-Fi scarta gli annunci degli altri dispositivi. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+
+</manifest>

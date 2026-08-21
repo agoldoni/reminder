@@ -1,7 +1,7 @@
 # Stato del lavoro — port desktop Linux
 
 **Aggiornato:** 2026-08-21
-**Branch:** `feature/desktop-linux` (10 commit, non ancora unito in `main`)
+**Branch:** `feature/desktop-linux` (11 commit, non ancora unito in `main`)
 
 ---
 
@@ -25,12 +25,14 @@ Compose Multiplatform, ed è distribuibile come AppImage.
 |---|---|
 | Schema v3 e migrazione 2→3 (T-17) | ✅ fatto, verificato anche su una copia del database reale |
 | Test di migrazione (T-26) | ✅ 4 test in `desktopTest`, senza emulatore |
-| Discovery, pairing, replica, UI (T-18…T-22) | ⏳ da fare |
+| Discovery mDNS (T-18) | ✅ fatto, round-trip reale verificato su desktop e cablaggio verificato su emulatore |
+| Pairing, replica, UI (T-19…T-22) | ⏳ da fare |
 
-**Avanzamento:** 29,2 gg completati su 46,0 stimati. Restano **16,8 gg**, tutti di tranche 2.
+**Avanzamento:** 30,7 gg completati su 46,0 stimati. Restano **15,3 gg**, tutti di tranche 2.
 
-**29 test automatici** (prima non ce n'erano): export ODS, formattazione date, scheduler desktop,
-autostart, istanza singola, riprogrammazione al boot (strumentato), migrazione 2→3.
+**40 test automatici** (prima non ce n'erano): export ODS, formattazione date, scheduler desktop,
+autostart, istanza singola, migrazione 2→3, elenco dei dispositivi, round-trip mDNS reale;
+strumentati su emulatore la riprogrammazione al boot e il cablaggio di `NsdDiscovery`.
 
 ## Come si lavora
 
@@ -60,12 +62,28 @@ ANDROID_SERIAL=emulator-5554 ./gradlew :shared:connectedDebugAndroidTest   # tes
   fa `copy()`): ricostruire l'entità da zero rigenererebbe l'`uuid` e romperebbe l'identità vista
   dagli altri dispositivi.
 
+## Che cosa c'è nella scoperta dei dispositivi
+
+- Servizio `_promemoria-sync._tcp`, con l'identità nell'attributo TXT `deviceId`. Il tipo va
+  scritto **senza** dominio per `NsdManager` e **con** `.local.` finale per jmdns.
+- **Android**: senza multicast lock il Wi-Fi scarta gli annunci, e `NsdManager` accetta una sola
+  `resolveService` per volta — le richieste passano da una coda.
+- **Desktop**: a jmdns va passato un indirizzo esplicito, perché `InetAddress.getLocalHost()` su
+  Linux risolve spesso in `127.0.1.1` e l'annuncio non uscirebbe dalla macchina.
+- **I permessi di rete stanno nel manifest di `:shared`**, non in quello dell'app: il merger li
+  propaga a `:androidApp` e anche all'APK dei test strumentati, che dal manifest dell'app non li
+  prenderebbe. È così che è emerso il problema: il test falliva con `SecurityException`.
+- Il fallback manuale non è una modalità separata: `PeerDirectory` unisce i dispositivi trovati e
+  quelli digitati nella stessa lista, e l'annuncio ha la meglio sull'indirizzo digitato uguale.
+  Gli indirizzi manuali non vengono salvati — a essere persistita è l'associazione, in T-19.
+- Nulla di tutto questo è ancora collegato all'app: `Discovery` non è nell'`AppContainer` e non
+  c'è UI. Il cablaggio arriva con T-21, l'interfaccia con T-22.
+
 ## Prossimo passo
 
-**T-18 — discovery mDNS**: `NsdManager` su Android (con multicast lock), `jmdns` su desktop,
-fallback manuale host/porta. Poi T-19 (pairing) → T-20 (motore di replica, con `upsertFromRemote`
-e la regola LWW) → T-21 (integrazione) → T-22 (UI stato sync), con i test T-25, T-29 e T-30
-a seguire.
+**T-19 — pairing**: codice di conferma sui due lati, segreto condiviso, canale cifrato, tabella
+`peers`. Poi T-20 (motore di replica, con `upsertFromRemote` e la regola LWW) → T-21
+(integrazione) → T-22 (UI stato sync), con i test T-25, T-29 e T-30 a seguire.
 
 Il dettaglio task per task è in [phase-3-implementation-plan.md](phase-3-implementation-plan.md).
 
@@ -81,6 +99,9 @@ Il dettaglio task per task è in [phase-3-implementation-plan.md](phase-3-implem
    si può simulare da adb. La logica è coperta da un test strumentato; il cablaggio
    receiver + manifest si verifica solo riavviando il telefono.
 4. **0,3 gg di documentazione** (T-32) sui requisiti di rete: ha senso scriverla insieme alla sync.
+5. **Il round-trip mDNS usa la rete reale della macchina.** Su un host senza interfacce non di
+   loopback il test si dichiara saltato invece di fallire; su una rete con multicast filtrato
+   fallirebbe, ed è l'informazione giusta da avere.
 
 ## Vincoli d'ambiente da ricordare
 

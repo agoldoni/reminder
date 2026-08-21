@@ -149,9 +149,9 @@ riaprire a ogni riavvio.
 Come utente voglio che telefono e PC si trovino da soli sulla stessa rete per non dover
 configurare indirizzi IP o porte.
 
-- [ ] Con entrambe le app attive sulla stessa rete, ciascuna elenca l'altra entro 30 s.
-- [ ] Il nome mostrato identifica il dispositivo in modo leggibile.
-- [ ] Se il multicast è bloccato, l'app lo segnala e offre l'inserimento manuale di host e porta.
+- [~] Con entrambe le app attive sulla stessa rete, ciascuna elenca l'altra entro 30 s. *(meccanismo pronto e verificato desktop↔desktop in ~4 s; telefono ↔ PC si collauda in T-30)*
+- [x] Il nome mostrato identifica il dispositivo in modo leggibile (`device_name`/modello su Android, hostname su desktop).
+- [~] Se il multicast è bloccato, l'app lo segnala e offre l'inserimento manuale di host e porta. *(`DiscoveryStatus.Unavailable` e `PeerDirectory.addManual` esistono e sono testati; la UI che li mostra è T-22)*
 
 ### US-005 · Associare i dispositivi in modo sicuro
 **Priorità:** Must Have
@@ -324,7 +324,7 @@ piattaforma), **UI**, **Test**, **Doc**.
 | T-15 | ✅ **fatto** — `ExportTarget` per piattaforma e use case comune; `Exporter` restituisce `ByteArray` invece di scrivere su `OutputStream` | Core | 1,0 | T-09 |
 | T-16 | ✅ **fatto** — `FileDialog` nativo in modalità salvataggio; annullare non scrive nulla | UI | 0,5 | T-15 |
 | T-17 | ✅ **fatto** — schema v3 (`uuid` con indice unico, `updatedAt`, `deleted`/`deletedAt`, `origin`), `migration2to3(deviceId)`, DAO con soft-delete e letture filtrate, `changedSince()`, `getByUuid()`, identità del dispositivo persistita per piattaforma. `upsertFromRemote()` è rinviata a T-20, dove la regola LWW che la definisce viene scritta e testata | Core | 1,5 | T-08, T-04 |
-| T-18 | Discovery mDNS: `NsdManager` su Android (con multicast lock), `jmdns` su desktop, fallback manuale host/porta | Core | 1,5 | T-17 |
+| T-18 | ✅ **fatto** — contratto `Discovery` in `commonMain` su `_promemoria-sync._tcp`, `NsdDiscovery` (multicast lock + risoluzioni serializzate), `JmdnsDiscovery` (indirizzo di sito esplicito), `PeerDirectory` che unisce trovati e digitati. 9 unit test + 1 round-trip mDNS reale su desktop + 1 strumentato sul cablaggio Android | Core | 1,5 | T-17 |
 | T-19 | Pairing: codice di conferma, segreto condiviso, canale cifrato, tabella `peers` | Core | 2,5 | T-18 |
 | T-20 | `SyncProtocol` + `SyncEngine`: merge LWW, tombstone, watermark, idempotenza | Core | 3,0 | T-17 |
 | T-21 | Integrazione trasporto ↔ engine: riprogrammazione allarmi, gestione errori, sync in foreground su Android | Core | 1,5 | T-19, T-20 |
@@ -343,14 +343,14 @@ piattaforma), **UI**, **Test**, **Doc**.
 
 **Stima totale: 46,0 giorni/uomo** (46,5 iniziali − 0,5 di T-03, rimosso)
 **Breakdown:** Infra 7,5 gg · Core 20,5 gg · UI 7,0 gg · Test 9,0 gg · Doc 2,0 gg
-**Già completati:** 29,2 gg — **tranche 1 completa** salvo 0,3 gg di documentazione che dipende dalla sincronizzazione; della tranche 2 sono chiusi lo schema v3 (T-17) e i suoi test di migrazione (T-26). **Restano 16,8 gg.**
+**Già completati:** 30,7 gg — **tranche 1 completa** salvo 0,3 gg di documentazione che dipende dalla sincronizzazione; della tranche 2 sono chiusi lo schema v3 (T-17), i suoi test di migrazione (T-26) e la scoperta dei dispositivi (T-18). **Restano 15,3 gg.**
 
 **Due tranche:**
 
 | Tranche | Contenuto | Task | Stima |
 |---|---|---|---:|
 | **1 — App desktop** | Tutto tranne la sincronizzazione: desktop completo, installabile, con notifiche, tray, autostart, export | T-01…T-16 (T-03 escluso), T-23, T-24, T-27, T-28, T-31, T-32 | **27,5 gg** (24,0 residui) |
-| **2 — Sincronizzazione** | Schema v3, discovery, pairing, replica, UI di stato, collaudo | T-17…T-22, T-25, T-26, T-29, T-30, T-33 | **18,5 gg** (16,5 residui) |
+| **2 — Sincronizzazione** | Schema v3, discovery, pairing, replica, UI di stato, collaudo | T-17…T-22, T-25, T-26, T-29, T-30, T-33 | **18,5 gg** (15,0 residui) |
 
 > **Stato al 2026-08-20:** completati T-01, T-02, T-04…T-09, T-11…T-14, la parte centrale di
 > T-10 e metà di T-28 (**18,5 gg**). L'app desktop si avvia, apre il database, mostra gli eventi,

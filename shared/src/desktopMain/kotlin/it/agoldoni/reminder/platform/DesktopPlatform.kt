@@ -5,6 +5,7 @@ import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import it.agoldoni.reminder.data.AppDatabase
 import kotlinx.coroutines.Dispatchers
 import java.io.File
+import java.net.InetAddress
 
 /** Dati applicativi secondo XDG: `$XDG_DATA_HOME/promemoria` o `~/.local/share/promemoria`. */
 fun appDataDirectory(): File {
@@ -25,6 +26,12 @@ fun localDeviceId(directory: File = appDataDirectory()): String {
         file.writeText(it)
     }
 }
+
+/** Nome con cui questo dispositivo si presenta sulla rete: l'hostname della macchina. */
+fun localDeviceName(): String =
+    System.getenv("HOSTNAME")?.takeIf { it.isNotBlank() }
+        ?: runCatching { InetAddress.getLocalHost().hostName }.getOrNull()?.takeIf { it.isNotBlank() }
+        ?: "Promemoria desktop"
 
 /** Su desktop SQLite non è garantito dal sistema: si usa il driver bundled. */
 fun createAppDatabase(
