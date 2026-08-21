@@ -343,7 +343,7 @@ private fun PeerAssociato(peer: PairedPeer, onDissocia: () -> Unit) {
             Column(modifier = Modifier.weight(1f).padding(vertical = 12.dp)) {
                 Text(peer.displayName, style = MaterialTheme.typography.titleMedium)
                 Text(
-                    if (peer.lastSyncAt > 0) "Allineato al ${formatDateTime(peer.lastSyncAt)}"
+                    if (peer.lastContactAt > 0) "Allineato al ${formatDateTime(peer.lastContactAt)}"
                     else "Non ancora allineato",
                     style = MaterialTheme.typography.bodySmall
                 )

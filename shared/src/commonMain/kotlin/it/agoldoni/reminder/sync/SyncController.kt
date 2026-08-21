@@ -14,7 +14,7 @@ data class SyncStatus(
      */
     val listeningHost: String? = null,
     val syncing: Boolean = false,
-    /** Ultima sincronizzazione riuscita, in tempo locale. */
+    /** Ultima sincronizzazione riuscita, **in ora locale**; ricavata dai peer, non dalla sessione. */
     val lastSyncAt: Long? = null,
     /** Esito o errore dell'ultimo tentativo, già in italiano. */
     val lastMessage: String? = null
@@ -92,7 +92,8 @@ interface SyncController {
 data class PairedPeer(
     val deviceId: String,
     val displayName: String,
-    val lastSyncAt: Long,
+    /** Ora **locale** dell'ultima sincronizzazione riuscita; zero se non è mai avvenuta. */
+    val lastContactAt: Long,
     val lastHost: String?,
     val lastPort: Int?
 )

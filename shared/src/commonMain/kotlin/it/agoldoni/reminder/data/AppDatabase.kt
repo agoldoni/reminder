@@ -8,7 +8,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.execSQL
 
-@Database(entities = [EventEntity::class, PeerEntity::class], version = 4, exportSchema = true)
+@Database(entities = [EventEntity::class, PeerEntity::class], version = 5, exportSchema = true)
 @ConstructedBy(AppDatabaseConstructor::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun eventDao(): EventDao
@@ -79,6 +79,22 @@ abstract class AppDatabase : RoomDatabase() {
                         "`pairedAt` INTEGER NOT NULL, " +
                         "`lastSyncAt` INTEGER NOT NULL, " +
                         "PRIMARY KEY(`deviceId`))"
+                )
+            }
+        }
+
+        /**
+         * v4 → v5: l'ora locale dell'ultima sincronizzazione riuscita. Prima si mostrava
+         * `lastSyncAt`, che è il watermark del protocollo e vive nell'orologio **dell'altro**
+         * dispositivo: con orologi diversi la schermata annunciava un istante mai esistito qui.
+         *
+         * Le righe già presenti restano a zero: non si può inventare quando è avvenuto un
+         * contatto passato, e «non ancora allineato» è meno sbagliato di una data finta.
+         */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL(
+                    "ALTER TABLE peers ADD COLUMN lastContactAt INTEGER NOT NULL DEFAULT 0"
                 )
             }
         }

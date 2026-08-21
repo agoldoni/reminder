@@ -253,6 +253,32 @@ class SyncServiceTest {
         assertNull(servizio.status.value.lastMessage, "non deve nemmeno provarci")
     }
 
+    /**
+     * Il riepilogo diceva «Mai sincronizzato» dopo ogni riavvio, mentre il peer sotto mostrava una
+     * data: l'ultimo allineamento stava in memoria invece che nei dati.
+     */
+    @Test
+    fun `l'ultimo allineamento sopravvive al riavvio perché viene dai peer`() = runBlocking {
+        peers.upsert(
+            PeerEntity(
+                deviceId = "id-altro",
+                displayName = "Computer",
+                sharedSecret = randomBytes(32).toHex(),
+                pairedAt = 1_000L,
+                lastContactAt = 1_700_000_000_000L
+            )
+        )
+
+        // Servizio appena costruito, come dopo un riavvio dell'app: nessuna sincronizzazione
+        // è avvenuta in questa sessione.
+        val servizio = servizio()
+        kotlinx.coroutines.withTimeout(2_000) {
+            while (servizio.status.value.lastSyncAt == null) kotlinx.coroutines.delay(10)
+        }
+
+        assertEquals(1_700_000_000_000L, servizio.status.value.lastSyncAt)
+    }
+
     @Test
     fun `dissociare toglie le credenziali`() = runBlocking {
         peers.upsert(

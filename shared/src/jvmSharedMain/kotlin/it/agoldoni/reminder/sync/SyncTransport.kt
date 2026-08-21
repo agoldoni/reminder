@@ -50,7 +50,8 @@ object SyncClient {
         port: Int,
         identity: LocalIdentity,
         peers: PeerDao,
-        engine: SyncEngine
+        engine: SyncEngine,
+        nowMillis: Long
     ): SyncOutcome = connected(host, port, { SyncOutcome.Failed(it) }) { socket ->
         when (val session = Session.initiate(
             socket.getInputStream(),
@@ -62,9 +63,9 @@ object SyncClient {
                 val result = SyncConversation.initiate(
                     session.channel,
                     engine,
-                    session.peer.lastSyncAt
+                    session.peer.watermark
                 )
-                peers.rememberSync(session.peer.deviceId, result.watermark)
+                peers.rememberSync(session.peer.deviceId, result.watermark, nowMillis)
                 peers.rememberAddress(session.peer.deviceId, host, port)
                 SyncOutcome.Completed(session.peer, result)
             }
@@ -183,8 +184,8 @@ class SyncServer(
         when (val session = Session.acceptGreeted(input, output, greeting.peer) { peers.getById(it) }) {
             is SessionOutcome.Refused -> onEvent(SyncServerEvent.Refused(session.reason))
             is SessionOutcome.Open -> {
-                val result = SyncConversation.accept(session.channel, engine, session.peer.lastSyncAt)
-                peers.rememberSync(session.peer.deviceId, result.watermark)
+                val result = SyncConversation.accept(session.channel, engine, session.peer.watermark)
+                peers.rememberSync(session.peer.deviceId, result.watermark, now())
                 socket.inetAddress?.hostAddress?.let {
                     peers.rememberAddress(session.peer.deviceId, it, socket.port)
                 }

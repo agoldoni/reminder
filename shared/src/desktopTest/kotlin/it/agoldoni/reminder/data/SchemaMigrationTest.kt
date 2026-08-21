@@ -170,8 +170,45 @@ class SchemaMigrationTest {
             )
             val salvato = assertNotNull(peers.getById("id-computer"))
             assertEquals("Computer", salvato.displayName)
-            assertEquals(0L, salvato.lastSyncAt)
+            assertEquals(0L, salvato.watermark)
+            assertEquals(0L, salvato.lastContactAt)
             assertNull(salvato.lastHost)
+        } finally {
+            database.close()
+        }
+    }
+
+    /**
+     * Prima della v5 la schermata mostrava `lastSyncAt` come data dell'ultimo allineamento, ma
+     * quello è il watermark del protocollo e vive nell'orologio dell'**altro** dispositivo: con
+     * orologi diversi si annunciava un istante mai esistito qui.
+     */
+    @Test
+    fun `dalla v5 il momento del contatto è distinto dal watermark`() = runTest {
+        createV2Database()
+
+        val database = createAppDatabase(dbFile, deviceId)
+        try {
+            val peers = database.peerDao()
+            peers.upsert(
+                PeerEntity(
+                    deviceId = "id-computer",
+                    displayName = "Computer",
+                    sharedSecret = "ab".repeat(32),
+                    pairedAt = 1_800_000_000_000L
+                )
+            )
+
+            // Il peer ha l'orologio avanti di un'ora: il watermark lo riflette, il contatto no.
+            peers.rememberSync("id-computer", watermark = 1_803_600_000_000L, contactedAt = 1_800_000_500_000L)
+
+            val salvato = assertNotNull(peers.getById("id-computer"))
+            assertEquals(1_803_600_000_000L, salvato.watermark, "il watermark resta quello del peer")
+            assertEquals(
+                1_800_000_500_000L,
+                salvato.lastContactAt,
+                "ciò che si mostra all'utente è l'ora locale, non quella dell'altro"
+            )
         } finally {
             database.close()
         }

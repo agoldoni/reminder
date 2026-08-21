@@ -29,8 +29,8 @@ class FakePeerDao(initial: List<PeerEntity> = emptyList()) : PeerDao {
         edit(deviceId) { it.copy(lastHost = host, lastPort = port) }
     }
 
-    override suspend fun rememberSync(deviceId: String, syncedAt: Long) {
-        edit(deviceId) { it.copy(lastSyncAt = syncedAt) }
+    override suspend fun rememberSync(deviceId: String, watermark: Long, contactedAt: Long) {
+        edit(deviceId) { it.copy(watermark = watermark, lastContactAt = contactedAt) }
     }
 
     private fun edit(deviceId: String, transform: (PeerEntity) -> PeerEntity) {

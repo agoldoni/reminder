@@ -55,6 +55,19 @@ class SyncService(
         .map { list -> list.map { it.toPairedPeer() } }
         .stateIn(scope, SharingStarted.Eagerly, emptyList())
 
+    init {
+        // L'ultimo allineamento è un dato persistito, non uno stato in memoria: leggerlo dai peer
+        // evita che la schermata dica «mai sincronizzato» dopo ogni riavvio dell'app.
+        scope.launch {
+            paired.collect { elenco ->
+                val ultimo = elenco.mapNotNull { it.lastContactAt.takeIf { t -> t > 0 } }.maxOrNull()
+                if (ultimo != _status.value.lastSyncAt) {
+                    _status.value = _status.value.copy(lastSyncAt = ultimo)
+                }
+            }
+        }
+    }
+
     private var server: SyncServer? = null
 
     /** Un giro alla volta: due sincronizzazioni sovrapposte con lo stesso peer si ostacolerebbero. */
@@ -187,11 +200,7 @@ class SyncService(
                     is SyncOutcome.Failed -> ultimoMessaggio = "${peer.displayName}: ${esito.reason}"
                 }
             }
-            _status.value = _status.value.copy(
-                syncing = false,
-                lastSyncAt = if (riuscito) now() else _status.value.lastSyncAt,
-                lastMessage = ultimoMessaggio
-            )
+            _status.value = _status.value.copy(syncing = false, lastMessage = ultimoMessaggio)
         }
     }
 
@@ -216,7 +225,7 @@ class SyncService(
         }
         var ultimo: SyncOutcome = SyncOutcome.Failed("Nessun tentativo effettuato.")
         for ((host, port) in indirizzi) {
-            ultimo = SyncClient.sync(host, port, identity, peers, engine)
+            ultimo = SyncClient.sync(host, port, identity, peers, engine, now())
             if (ultimo is SyncOutcome.Completed) return ultimo
         }
         return ultimo
@@ -268,10 +277,8 @@ class SyncService(
                 is SyncServerEvent.Paired ->
                     _status.value.copy(lastMessage = "${event.peer.displayName} associato.")
 
-                is SyncServerEvent.Synced -> _status.value.copy(
-                    lastSyncAt = now(),
-                    lastMessage = descrivi(event.peer, event.result)
-                )
+                is SyncServerEvent.Synced ->
+                    _status.value.copy(lastMessage = descrivi(event.peer, event.result))
 
                 is SyncServerEvent.Refused -> _status.value.copy(lastMessage = event.reason)
                 is SyncServerEvent.Failed -> _status.value.copy(lastMessage = event.reason)
@@ -292,7 +299,7 @@ class SyncService(
 private fun PeerEntity.toPairedPeer() = PairedPeer(
     deviceId = deviceId,
     displayName = displayName,
-    lastSyncAt = lastSyncAt,
+    lastContactAt = lastContactAt,
     lastHost = lastHost,
     lastPort = lastPort
 )

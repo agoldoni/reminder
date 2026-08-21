@@ -1,5 +1,6 @@
 package it.agoldoni.reminder.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
@@ -21,6 +22,17 @@ data class PeerEntity(
     val lastHost: String? = null,
     val lastPort: Int? = null,
     val pairedAt: Long,
-    /** Watermark della replica: fin dove si era arrivati con questo peer. */
-    val lastSyncAt: Long = 0
+    /**
+     * Watermark della replica: fin dove si era arrivati con questo peer, **nel tempo del peer**.
+     * Non è una data da mostrare — con orologi diversi indica un istante che qui non è mai
+     * esistito. Il nome della colonna resta `lastSyncAt` perché rinominarla richiederebbe di
+     * ricreare la tabella: SQLite sa fare `RENAME COLUMN` solo dalla 3.25, e l'API 26 si ferma
+     * alla 3.18.
+     */
+    @ColumnInfo(name = "lastSyncAt") val watermark: Long = 0,
+    /**
+     * Quando questo dispositivo ha sincronizzato con successo l'ultima volta, **in ora locale**.
+     * È il valore da mostrare all'utente: [watermark] appartiene all'orologio dell'altro.
+     */
+    val lastContactAt: Long = 0
 )

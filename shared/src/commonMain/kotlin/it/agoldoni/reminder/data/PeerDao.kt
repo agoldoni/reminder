@@ -28,6 +28,10 @@ interface PeerDao {
     @Query("UPDATE peers SET lastHost = :host, lastPort = :port WHERE deviceId = :deviceId")
     suspend fun rememberAddress(deviceId: String, host: String, port: Int)
 
-    @Query("UPDATE peers SET lastSyncAt = :syncedAt WHERE deviceId = :deviceId")
-    suspend fun rememberSync(deviceId: String, syncedAt: Long)
+    /**
+     * [watermark] è nel tempo del peer e serve al protocollo; [contactedAt] è l'ora locale ed è
+     * l'unica che abbia senso mostrare. Si scrivono insieme perché descrivono lo stesso evento.
+     */
+    @Query("UPDATE peers SET lastSyncAt = :watermark, lastContactAt = :contactedAt WHERE deviceId = :deviceId")
+    suspend fun rememberSync(deviceId: String, watermark: Long, contactedAt: Long)
 }

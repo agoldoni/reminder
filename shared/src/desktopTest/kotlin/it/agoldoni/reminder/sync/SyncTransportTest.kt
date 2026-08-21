@@ -119,7 +119,8 @@ class SyncTransportTest {
             port = portaSync,
             identity = telefono,
             peers = telefonoDb.peerDao(),
-            engine = SyncEngine(telefonoDb.eventDao(), RecordingAlarmScheduler()) { ORA_TELEFONO }
+            engine = SyncEngine(telefonoDb.eventDao(), RecordingAlarmScheduler()) { ORA_TELEFONO },
+            nowMillis = CONTATTO_TELEFONO
         )
 
         assertIs<SyncOutcome.Completed>(risultato)
@@ -151,17 +152,24 @@ class SyncTransportTest {
         val portaSync = avviaServer(sincronizzato)
         SyncClient.sync(
             "127.0.0.1", portaSync, telefono, telefonoDb.peerDao(),
-            SyncEngine(telefonoDb.eventDao(), RecordingAlarmScheduler()) { ORA_TELEFONO }
+            SyncEngine(telefonoDb.eventDao(), RecordingAlarmScheduler()) { ORA_TELEFONO },
+            CONTATTO_TELEFONO
         )
         sincronizzato.await(5, TimeUnit.SECONDS)
 
         val salvatoSulTelefono = assertNotNull(telefonoDb.peerDao().getById("id-computer"))
-        assertEquals(ORA_COMPUTER, salvatoSulTelefono.lastSyncAt, "il watermark va persistito")
+        assertEquals(ORA_COMPUTER, salvatoSulTelefono.watermark, "il watermark è l'ora del peer")
+        assertEquals(
+            CONTATTO_TELEFONO,
+            salvatoSulTelefono.lastContactAt,
+            "l'ora del contatto è invece la propria: è quella che si mostra all'utente"
+        )
         assertEquals("127.0.0.1", salvatoSulTelefono.lastHost, "e l'indirizzo, per ripartire da lì")
         assertEquals(portaSync, salvatoSulTelefono.lastPort)
 
         val salvatoSulComputer = assertNotNull(computerDb.peerDao().getById("id-telefono"))
-        assertEquals(ORA_TELEFONO, salvatoSulComputer.lastSyncAt)
+        assertEquals(ORA_TELEFONO, salvatoSulComputer.watermark)
+        assertEquals(1_800_000_000_000L, salvatoSulComputer.lastContactAt, "il server usa il proprio now")
     }
 
     @Test
@@ -179,7 +187,8 @@ class SyncTransportTest {
 
         val risultato = SyncClient.sync(
             "127.0.0.1", porta, telefono, telefonoDb.peerDao(),
-            SyncEngine(telefonoDb.eventDao(), RecordingAlarmScheduler()) { ORA_TELEFONO }
+            SyncEngine(telefonoDb.eventDao(), RecordingAlarmScheduler()) { ORA_TELEFONO },
+            CONTATTO_TELEFONO
         )
 
         assertEquals(Session.NON_ASSOCIATO, assertIs<SyncOutcome.Refused>(risultato).reason)
@@ -192,7 +201,8 @@ class SyncTransportTest {
             port = 1, // porta riservata: la connessione viene rifiutata subito
             identity = telefono,
             peers = telefonoDb.peerDao(),
-            engine = SyncEngine(telefonoDb.eventDao(), RecordingAlarmScheduler()) { ORA_TELEFONO }
+            engine = SyncEngine(telefonoDb.eventDao(), RecordingAlarmScheduler()) { ORA_TELEFONO },
+            nowMillis = CONTATTO_TELEFONO
         )
 
         val fallito = assertIs<SyncOutcome.Failed>(risultato)
@@ -202,5 +212,8 @@ class SyncTransportTest {
     private companion object {
         const val ORA_TELEFONO = 5_000L
         const val ORA_COMPUTER = 9_000L
+
+        /** Ora locale del telefono al momento del contatto: distinta dai watermark di proposito. */
+        const val CONTATTO_TELEFONO = 1_700_000_000_000L
     }
 }
