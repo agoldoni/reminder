@@ -36,6 +36,17 @@ import kotlinx.coroutines.flow.MutableStateFlow
 
 private const val NEW_EVENT_ROUTE = "edit/0"
 
+/**
+ * Versione del prodotto, generata dal build in una risorsa: tenerla scritta qui a mano vorrebbe
+ * dire dimenticarsene quando cambia `promemoriaVersion`.
+ */
+private fun versioneApplicativa(): String =
+    runCatching {
+        object {}.javaClass.getResourceAsStream("/versione.properties")?.use { flusso ->
+            java.util.Properties().apply { load(flusso) }.getProperty("versione")
+        }
+    }.getOrNull() ?: "sconosciuta"
+
 fun main() {
     val windowVisible = MutableStateFlow(true)
 
@@ -71,7 +82,7 @@ fun main() {
         deviceId = deviceId,
         appInfo = AppInfo(
             author = "Alberto Goldoni",
-            version = "1.0",
+            version = versioneApplicativa(),
             build = "desktop",
             buildDate = formatDateTime(nowMillis())
         ),

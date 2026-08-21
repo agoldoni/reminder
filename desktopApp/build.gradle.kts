@@ -6,6 +6,26 @@ plugins {
 
 kotlin { jvmToolchain(17) }
 
+/**
+ * La versione finisce in una risorsa perché la finestra Info la mostri: il modulo desktop non ha
+ * un `BuildConfig`, e leggerla dal manifest del jar non funzionerebbe con `:desktopApp:run`, dove
+ * le classi stanno su filesystem.
+ */
+val generaVersione by tasks.registering {
+    val versione = project.property("promemoriaVersion") as String
+    val destinazione = layout.buildDirectory.dir("generated/versione")
+    inputs.property("versione", versione)
+    outputs.dir(destinazione)
+    doLast {
+        destinazione.get().file("versione.properties").asFile.apply {
+            parentFile.mkdirs()
+            writeText("versione=$versione\n")
+        }
+    }
+}
+
+sourceSets.main { resources.srcDir(generaVersione) }
+
 dependencies {
     implementation(project(":shared"))
     implementation(compose.desktop.currentOs)
@@ -22,7 +42,7 @@ compose.desktop {
 
         nativeDistributions {
             packageName = "Promemoria"
-            packageVersion = "1.0.0"
+            packageVersion = project.property("promemoriaVersion") as String
             description = "Promemoria e scadenze"
             vendor = "Alberto Goldoni"
             // Moduli JDK non deducibili dal bytecode: JDBC per SQLite bundled, prefs per Java

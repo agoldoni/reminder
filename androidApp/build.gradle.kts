@@ -14,8 +14,8 @@ android {
         applicationId = "it.agoldoni.reminder"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = (property("promemoriaVersionCode") as String).toInt()
+        versionName = property("promemoriaVersion") as String
 
         buildConfigField("String", "APP_AUTHOR", "\"Alberto Goldoni\"")
         buildConfigField("String", "BUILD_DATE", "\"${providers.exec { commandLine("date", "+%Y-%m-%d %H:%M") }.standardOutput.asText.get().trim()}\"")
