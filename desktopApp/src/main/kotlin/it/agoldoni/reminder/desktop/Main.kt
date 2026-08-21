@@ -20,7 +20,16 @@ import it.agoldoni.reminder.platform.DesktopAlarmScheduler
 import it.agoldoni.reminder.platform.ReminderRoot
 import it.agoldoni.reminder.platform.createAppDatabase
 import it.agoldoni.reminder.platform.formatDateTime
+import it.agoldoni.reminder.platform.DesktopAppSettings
 import it.agoldoni.reminder.platform.localDeviceId
+import it.agoldoni.reminder.platform.localDeviceName
+import it.agoldoni.reminder.sync.JmdnsDiscovery
+import it.agoldoni.reminder.sync.LocalIdentity
+import it.agoldoni.reminder.sync.SyncEngine
+import it.agoldoni.reminder.sync.SyncService
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import it.agoldoni.reminder.platform.nowMillis
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,6 +51,20 @@ fun main() {
     val alarmScheduler = DesktopAlarmScheduler(eventDao)
     alarmScheduler.bootstrap()
 
+    // Il desktop è il lato sempre in ascolto: è quello che le policy di Android impediscono al
+    // telefono. Se la sincronizzazione è spenta, `start()` non apre niente.
+    val syncScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    val syncService = SyncService(
+        identity = LocalIdentity(deviceId, localDeviceName()),
+        peers = database.peerDao(),
+        engine = SyncEngine(eventDao, alarmScheduler),
+        discovery = JmdnsDiscovery(syncScope),
+        settings = DesktopAppSettings(),
+        scope = syncScope,
+        listens = true
+    )
+    syncService.start()
+
     val container = AppContainer(
         eventDao = eventDao,
         alarmScheduler = alarmScheduler,
@@ -53,7 +76,8 @@ fun main() {
             buildDate = formatDateTime(nowMillis())
         ),
         exporter = OdsExporter(),
-        exportTarget = DesktopExportTarget()
+        exportTarget = DesktopExportTarget(),
+        sync = syncService
     )
 
     val navigationRequests = MutableSharedFlow<String>(extraBufferCapacity = 1)

@@ -9,6 +9,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import it.agoldoni.reminder.appContainer
 import it.agoldoni.reminder.platform.ReminderRoot
 
@@ -24,6 +26,16 @@ class MainActivity : ComponentActivity() {
         setContent {
             ReminderRoot(appContainer)
         }
+    }
+
+    /**
+     * Il telefono sincronizza qui, al rientro in primo piano, perché è l'unico momento in cui
+     * può: Android non lascia tenere un socket in ascolto ad app chiusa. Se la sincronizzazione è
+     * spenta o non c'è nessun dispositivo associato, `syncNow()` non fa nulla.
+     */
+    override fun onStart() {
+        super.onStart()
+        lifecycleScope.launch { appContainer.sync.syncNow() }
     }
 
     /** Il permesso serve a tutta l'app, non alla sola schermata di modifica: si chiede all'avvio. */

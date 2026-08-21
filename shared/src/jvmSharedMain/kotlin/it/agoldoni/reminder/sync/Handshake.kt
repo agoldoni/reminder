@@ -67,45 +67,55 @@ internal inline fun <reified T : SyncMessage> SyncMessage.expect(): T = when (th
  */
 object Pairing {
 
+    /**
+     * Chi apre la connessione sa già di volersi associare: saluta dichiarandolo e prosegue.
+     */
     suspend fun initiate(
         input: InputStream,
         output: OutputStream,
         identity: LocalIdentity,
         approval: PairingApproval,
         nowMillis: Long
-    ): PairingOutcome = exchange(
-        input = input,
-        output = output,
-        identity = identity,
-        approval = approval,
-        nowMillis = nowMillis,
-        role = ChannelRole.INITIATOR
-    )
+    ): PairingOutcome {
+        val greeting = Handshake.asInitiator(input, output, identity, SyncIntent.PAIR)
+            ?: return PairingOutcome.Refused(VERSIONE_INCOMPATIBILE)
+        return exchange(input, output, greeting.peer, approval, nowMillis, ChannelRole.INITIATOR)
+    }
 
+    /** Scorciatoia per chi ascolta una connessione sola e non deve smistare nulla. */
     suspend fun accept(
         input: InputStream,
         output: OutputStream,
         identity: LocalIdentity,
         approval: PairingApproval,
         nowMillis: Long
-    ): PairingOutcome = exchange(
-        input = input,
-        output = output,
-        identity = identity,
-        approval = approval,
-        nowMillis = nowMillis,
-        role = ChannelRole.RESPONDER
-    )
+    ): PairingOutcome {
+        val greeting = Handshake.asResponder(input, output, identity)
+            ?: return PairingOutcome.Refused(VERSIONE_INCOMPATIBILE)
+        return exchange(input, output, greeting.peer, approval, nowMillis, ChannelRole.RESPONDER)
+    }
+
+    /**
+     * Per chi è in ascolto e ha già salutato: l'intenzione l'ha letta dal saluto ed è per questo
+     * che ha scelto di associarsi invece che di sincronizzare.
+     */
+    suspend fun acceptGreeted(
+        input: InputStream,
+        output: OutputStream,
+        peer: PeerIdentity,
+        approval: PairingApproval,
+        nowMillis: Long
+    ): PairingOutcome = exchange(input, output, peer, approval, nowMillis, ChannelRole.RESPONDER)
 
     private suspend fun exchange(
         input: InputStream,
         output: OutputStream,
-        identity: LocalIdentity,
+        peer: PeerIdentity,
         approval: PairingApproval,
         nowMillis: Long,
         role: ChannelRole
     ): PairingOutcome = try {
-        negotiate(input, output, identity, approval, nowMillis, role)
+        negotiate(input, output, peer, approval, nowMillis, role)
     } catch (refusal: RemoteRefusalException) {
         PairingOutcome.Refused(refusal.reason)
     }
@@ -113,13 +123,11 @@ object Pairing {
     private suspend fun negotiate(
         input: InputStream,
         output: OutputStream,
-        identity: LocalIdentity,
+        peer: PeerIdentity,
         approval: PairingApproval,
         nowMillis: Long,
         role: ChannelRole
     ): PairingOutcome {
-        val peer = greet(input, output, identity, role) ?: return PairingOutcome.Refused(VERSIONE_INCOMPATIBILE)
-
         val mine = EphemeralKeyPair.generate()
         val theirPublicKey = when (role) {
             ChannelRole.INITIATOR -> {
@@ -201,32 +209,45 @@ internal fun messaggioVersione(loro: Int) =
     "Versione del protocollo incompatibile: qui $PROTOCOL_VERSION, sull'altro dispositivo $loro. " +
         "Aggiorna l'app sul dispositivo più vecchio."
 
+/** Chi si è presentato e perché. */
+data class Greeting(val peer: PeerIdentity, val intent: SyncIntent)
+
 /**
  * Scambio delle identità e confronto della versione, prima di qualunque crittografia. È il primo
- * atto di ogni connessione, che porti a un'associazione o a una sincronizzazione.
+ * atto di ogni connessione, che porti a un'associazione o a una sincronizzazione, ed è separato
+ * dalle due proprio perché chi ascolta deve poter leggere l'intenzione **prima** di scegliere.
+ *
+ * Restituisce `null` quando le versioni non si parlano; in quel caso il rifiuto, con dentro i due
+ * numeri di versione, è già stato mandato all'altro lato.
  */
-internal fun greet(
-    input: InputStream,
-    output: OutputStream,
-    identity: LocalIdentity,
-    role: ChannelRole
-): PeerIdentity? = when (role) {
-    ChannelRole.INITIATOR -> {
-        output.sendMessage(Hello(PROTOCOL_VERSION, identity.deviceId, identity.displayName))
+object Handshake {
+
+    fun asInitiator(
+        input: InputStream,
+        output: OutputStream,
+        identity: LocalIdentity,
+        intent: SyncIntent
+    ): Greeting? {
+        output.sendMessage(
+            Hello(PROTOCOL_VERSION, identity.deviceId, identity.displayName, intent)
+        )
         val ack = input.receiveMessage().expect<HelloAck>()
-        if (ack.protocolVersion != PROTOCOL_VERSION) null
-        else PeerIdentity(ack.deviceId, ack.displayName)
+        return if (ack.protocolVersion != PROTOCOL_VERSION) null
+        else Greeting(PeerIdentity(ack.deviceId, ack.displayName), intent)
     }
 
-    ChannelRole.RESPONDER -> {
+    fun asResponder(
+        input: InputStream,
+        output: OutputStream,
+        identity: LocalIdentity
+    ): Greeting? {
         val hello = input.receiveMessage().expect<Hello>()
         if (hello.protocolVersion != PROTOCOL_VERSION) {
             output.sendMessage(Rejected(messaggioVersione(hello.protocolVersion)))
-            null
-        } else {
-            output.sendMessage(HelloAck(PROTOCOL_VERSION, identity.deviceId, identity.displayName))
-            PeerIdentity(hello.deviceId, hello.displayName)
+            return null
         }
+        output.sendMessage(HelloAck(PROTOCOL_VERSION, identity.deviceId, identity.displayName))
+        return Greeting(PeerIdentity(hello.deviceId, hello.displayName), hello.intent)
     }
 }
 

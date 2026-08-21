@@ -9,20 +9,47 @@ import it.agoldoni.reminder.platform.AndroidAlarmScheduler
 import it.agoldoni.reminder.platform.AndroidAppContainer
 import it.agoldoni.reminder.platform.AppInfo
 import it.agoldoni.reminder.platform.createAppDatabase
+import it.agoldoni.reminder.platform.AndroidAppSettings
 import it.agoldoni.reminder.platform.localDeviceId
+import it.agoldoni.reminder.platform.localDeviceName
+import it.agoldoni.reminder.sync.LocalIdentity
+import it.agoldoni.reminder.sync.NsdDiscovery
+import it.agoldoni.reminder.sync.SyncEngine
+import it.agoldoni.reminder.sync.SyncService
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
 class ReminderApp : Application() {
 
     lateinit var container: AppContainer
         private set
 
+    lateinit var syncService: SyncService
+        private set
+
     override fun onCreate() {
         super.onCreate()
         val deviceId = localDeviceId(this)
         val database = createAppDatabase(this, deviceId)
+        val alarmScheduler = AndroidAlarmScheduler(this)
+        // Il telefono non ascolta: Android non lascia tenere un socket aperto ad app chiusa,
+        // quindi sincronizza chiamando lui, quando è in primo piano (vedi MainActivity).
+        val syncScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        syncService = SyncService(
+            identity = LocalIdentity(deviceId, localDeviceName(this)),
+            peers = database.peerDao(),
+            engine = SyncEngine(database.eventDao(), alarmScheduler),
+            discovery = NsdDiscovery(this, syncScope),
+            settings = AndroidAppSettings(this),
+            scope = syncScope,
+            listens = false
+        )
+        syncService.start()
+
         container = AppContainer(
             eventDao = database.eventDao(),
-            alarmScheduler = AndroidAlarmScheduler(this),
+            alarmScheduler = alarmScheduler,
             deviceId = deviceId,
             appInfo = AppInfo(
                 author = BuildConfig.APP_AUTHOR,
@@ -31,7 +58,8 @@ class ReminderApp : Application() {
                 buildDate = BuildConfig.BUILD_DATE
             ),
             exporter = OdsExporter(),
-            exportTarget = AndroidExportTarget(this)
+            exportTarget = AndroidExportTarget(this),
+            sync = syncService
         )
         AndroidAppContainer.instance = container
     }

@@ -10,6 +10,9 @@ import it.agoldoni.reminder.data.AppDatabase
 import it.agoldoni.reminder.data.EventEntity
 import it.agoldoni.reminder.di.AppContainer
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /** Su Android si usa SQLite di sistema: nessuna libreria nativa da imbarcare nell'APK. */
 fun createAppDatabase(context: Context, deviceId: String = localDeviceId(context)): AppDatabase =
@@ -50,6 +53,26 @@ fun localDeviceName(context: Context): String =
     Settings.Global.getString(context.applicationContext.contentResolver, "device_name")
         ?.takeIf { it.isNotBlank() }
         ?: Build.MODEL
+
+/** Preferenze su `SharedPreferences`: sopravvivono agli aggiornamenti, non alla disinstallazione. */
+class AndroidAppSettings(context: Context) : AppSettings {
+
+    private val prefs = context.applicationContext
+        .getSharedPreferences(SETTINGS_PREFS, Context.MODE_PRIVATE)
+
+    private val _syncEnabled = MutableStateFlow(prefs.getBoolean(SYNC_ENABLED_KEY, false))
+    override val syncEnabled: StateFlow<Boolean> = _syncEnabled.asStateFlow()
+
+    override fun setSyncEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(SYNC_ENABLED_KEY, enabled).apply()
+        _syncEnabled.value = enabled
+    }
+
+    private companion object {
+        const val SETTINGS_PREFS = "impostazioni"
+        const val SYNC_ENABLED_KEY = "syncEnabled"
+    }
+}
 
 class AndroidAlarmScheduler(private val context: Context) : AlarmScheduler {
     override fun schedule(event: EventEntity) = AndroidAlarms.schedule(context, event)

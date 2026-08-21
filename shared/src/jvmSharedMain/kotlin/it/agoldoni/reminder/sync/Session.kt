@@ -27,23 +27,40 @@ object Session {
         output: OutputStream,
         identity: LocalIdentity,
         knownPeer: suspend (deviceId: String) -> PeerEntity?
-    ): SessionOutcome = open(input, output, identity, knownPeer, ChannelRole.INITIATOR)
+    ): SessionOutcome {
+        val greeting = Handshake.asInitiator(input, output, identity, SyncIntent.SYNC)
+            ?: return SessionOutcome.Refused(VERSIONE_INCOMPATIBILE)
+        return open(input, output, greeting.peer, knownPeer, ChannelRole.INITIATOR)
+    }
 
+    /** Scorciatoia per chi ascolta una connessione sola e non deve smistare nulla. */
     suspend fun accept(
         input: InputStream,
         output: OutputStream,
         identity: LocalIdentity,
         knownPeer: suspend (deviceId: String) -> PeerEntity?
-    ): SessionOutcome = open(input, output, identity, knownPeer, ChannelRole.RESPONDER)
+    ): SessionOutcome {
+        val greeting = Handshake.asResponder(input, output, identity)
+            ?: return SessionOutcome.Refused(VERSIONE_INCOMPATIBILE)
+        return open(input, output, greeting.peer, knownPeer, ChannelRole.RESPONDER)
+    }
+
+    /** Per chi è in ascolto e ha già salutato: l'intenzione l'ha letta dal saluto. */
+    suspend fun acceptGreeted(
+        input: InputStream,
+        output: OutputStream,
+        peer: PeerIdentity,
+        knownPeer: suspend (deviceId: String) -> PeerEntity?
+    ): SessionOutcome = open(input, output, peer, knownPeer, ChannelRole.RESPONDER)
 
     private suspend fun open(
         input: InputStream,
         output: OutputStream,
-        identity: LocalIdentity,
+        declared: PeerIdentity,
         knownPeer: suspend (deviceId: String) -> PeerEntity?,
         role: ChannelRole
     ): SessionOutcome = try {
-        negotiate(input, output, identity, knownPeer, role)
+        negotiate(input, output, declared, knownPeer, role)
     } catch (refusal: RemoteRefusalException) {
         SessionOutcome.Refused(refusal.reason)
     }
@@ -51,13 +68,10 @@ object Session {
     private suspend fun negotiate(
         input: InputStream,
         output: OutputStream,
-        identity: LocalIdentity,
+        declared: PeerIdentity,
         knownPeer: suspend (deviceId: String) -> PeerEntity?,
         role: ChannelRole
     ): SessionOutcome {
-        val declared = greet(input, output, identity, role)
-            ?: return SessionOutcome.Refused(VERSIONE_INCOMPATIBILE)
-
         val peer = knownPeer(declared.deviceId)
         if (peer == null) {
             // Il rifiuto arriva prima dei nonce: a un dispositivo sconosciuto non si dà nemmeno

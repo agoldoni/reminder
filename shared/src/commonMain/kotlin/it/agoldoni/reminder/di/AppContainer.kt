@@ -9,6 +9,7 @@ import it.agoldoni.reminder.export.ExportTarget
 import it.agoldoni.reminder.export.Exporter
 import it.agoldoni.reminder.platform.AlarmScheduler
 import it.agoldoni.reminder.platform.AppInfo
+import it.agoldoni.reminder.sync.SyncController
 import it.agoldoni.reminder.ui.completed.CompletedViewModel
 import it.agoldoni.reminder.ui.edit.EventEditViewModel
 import it.agoldoni.reminder.ui.list.EventListViewModel
@@ -24,7 +25,12 @@ class AppContainer(
     /** Identità di questa installazione: marchia gli eventi creati qui. */
     val deviceId: String,
     exporter: Exporter,
-    exportTarget: ExportTarget
+    exportTarget: ExportTarget,
+    /**
+     * Comando della sincronizzazione. È costruito dal modulo applicativo perché vive sotto
+     * `jvmSharedMain`, dove stanno socket e crittografia, mentre questo container è comune.
+     */
+    val sync: SyncController
 ) {
 
     val exportEventsUseCase: ExportEventsUseCase =

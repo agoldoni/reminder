@@ -10,6 +10,10 @@ interface PeerDao {
     @Query("SELECT * FROM peers ORDER BY displayName ASC")
     fun getAll(): Flow<List<PeerEntity>>
 
+    /** Lettura una tantum: un giro di sincronizzazione non ha bisogno di restare in ascolto. */
+    @Query("SELECT * FROM peers ORDER BY displayName ASC")
+    suspend fun list(): List<PeerEntity>
+
     @Query("SELECT * FROM peers WHERE deviceId = :deviceId")
     suspend fun getById(deviceId: String): PeerEntity?
 

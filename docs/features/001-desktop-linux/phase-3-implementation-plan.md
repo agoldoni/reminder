@@ -350,7 +350,7 @@ piattaforma), **UI**, **Test**, **Doc**.
 | T-18 | ✅ **fatto** — contratto `Discovery` in `commonMain` su `_promemoria-sync._tcp`, `NsdDiscovery` (multicast lock + risoluzioni serializzate), `JmdnsDiscovery` (indirizzo di sito esplicito), `PeerDirectory` che unisce trovati e digitati. 9 unit test + 1 round-trip mDNS reale su desktop + 1 strumentato sul cablaggio Android | Core | 1,5 | T-17 |
 | T-19 | ✅ **fatto** — tabella `peers` (schema v4, `MIGRATION_3_4`), ECDH P-256 effimero, HKDF-SHA256 verificato su RFC 5869, associazione con codice **confrontato a vista** (vedi nota sotto), canale AES-256-GCM con chiavi direzionali e sequenza autenticata, rifiuto dei non associati e delle versioni incompatibili. 19 test | Core | 2,5 | T-18 |
 | T-20 | ✅ **fatto** — `resolveMerge` (LWW con tie-break deterministico), `SyncEngine` con riprogrammazione degli allarmi, `SyncConversation` sopra il canale cifrato, `upsertFromRemote` realizzata come merge nel motore. Il watermark è dichiarato dal mittente e i due lati si scambiano prima le domande: vedi la nota sul clock skew | Core | 3,0 | T-17 |
-| T-21 | Integrazione trasporto ↔ engine: riprogrammazione allarmi, gestione errori, sync in foreground su Android | Core | 1,5 | T-19, T-20 |
+| T-21 | ✅ **fatto** — `SyncServer`/`SyncClient` su socket, `SyncService` che orchestra ricerca, ascolto, associazione e replica, flag `sync_enabled` spento di default, errori di rete come messaggi in italiano, `peerDao` e sincronizzazione nell'`AppContainer`, sync in foreground su Android da `onStart()`. Verificato l'avvio di entrambe le app col nuovo cablaggio | Core | 1,5 | T-19, T-20 |
 | T-22 | Schermata stato sincronizzazione: peer, ultimo sync, errori, sync manuale, dissociazione | UI | 2,0 | T-21 |
 | T-23 | ✅ **fatto** — `commonTest`, `jvmSharedTest`, `desktopTest`, `desktopApp/src/test` e `androidInstrumentedTest`, quest'ultimo eseguito su emulatore | Test | 0,5 | T-02 |
 | T-24 | ✅ **fatto** — `./build.sh desktop` produce un AppImage da 69,6 MB: `createDistributable` + AppDir + `appimagetool`. Icona, `.desktop` e `AppRun` inclusi; `APPIMAGE` risulta valorizzato a runtime, quindi l'autostart funziona dall'AppImage | Infra | 2,5 | T-13 |
@@ -366,14 +366,14 @@ piattaforma), **UI**, **Test**, **Doc**.
 
 **Stima totale: 46,0 giorni/uomo** (46,5 iniziali − 0,5 di T-03, rimosso)
 **Breakdown:** Infra 7,5 gg · Core 20,5 gg · UI 7,0 gg · Test 9,0 gg · Doc 2,0 gg
-**Già completati:** 36,2 gg — **tranche 1 completa** salvo 0,3 gg di documentazione che dipende dalla sincronizzazione; della tranche 2 sono chiusi lo schema v3 (T-17), i test di migrazione (T-26), la scoperta dei dispositivi (T-18), l'associazione con canale cifrato (T-19) e il motore di replica (T-20). **Restano 9,8 gg.**
+**Già completati:** 37,7 gg — **tranche 1 completa** salvo 0,3 gg di documentazione che dipende dalla sincronizzazione; della tranche 2 restano solo la UI (T-22) e i collaudi. **Restano 8,3 gg.**
 
 **Due tranche:**
 
 | Tranche | Contenuto | Task | Stima |
 |---|---|---|---:|
 | **1 — App desktop** | Tutto tranne la sincronizzazione: desktop completo, installabile, con notifiche, tray, autostart, export | T-01…T-16 (T-03 escluso), T-23, T-24, T-27, T-28, T-31, T-32 | **27,5 gg** (24,0 residui) |
-| **2 — Sincronizzazione** | Schema v3, discovery, pairing, replica, UI di stato, collaudo | T-17…T-22, T-25, T-26, T-29, T-30, T-33 | **18,5 gg** (9,5 residui) |
+| **2 — Sincronizzazione** | Schema v3, discovery, pairing, replica, UI di stato, collaudo | T-17…T-22, T-25, T-26, T-29, T-30, T-33 | **18,5 gg** (8,0 residui) |
 
 > **Stato al 2026-08-20:** completati T-01, T-02, T-04…T-09, T-11…T-14, la parte centrale di
 > T-10 e metà di T-28 (**18,5 gg**). L'app desktop si avvia, apre il database, mostra gli eventi,
@@ -468,7 +468,7 @@ distribuzione: il rollout coincide con l'installazione sui due dispositivi dell'
       nessuna migrazione, nessun rischio sui dati.
 - [x] **Tranche 2** — migrazione allo schema v3 e attivazione della sincronizzazione.
 
-**Feature flag:** `sync_enabled`, impostazione applicativa persistita, **disattivata di default**.
+**Feature flag:** `sync_enabled` — ✅ **implementato in T-21** (`AppSettings`, `SharedPreferences` su Android e file di properties su desktop), impostazione applicativa persistita, **disattivata di default**.
 Finché è spenta non vengono aperti socket né annunci mDNS, e l'app si comporta come nella
 tranche 1. Si accende quando l'utente avvia il primo pairing. È un interruttore runtime, non di
 build: permette di spegnere la sync in caso di problemi senza reinstallare nulla.

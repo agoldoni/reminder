@@ -13,13 +13,22 @@ const val PROTOCOL_VERSION = 1
 @Serializable
 sealed interface SyncMessage
 
-/** Primo messaggio di ogni connessione, in chiaro: prima di questo non c'è ancora una chiave. */
+/** Perché si sta bussando: associarsi, o sincronizzare avendolo già fatto. */
+@Serializable
+enum class SyncIntent { PAIR, SYNC }
+
+/**
+ * Primo messaggio di ogni connessione, in chiaro: prima di questo non c'è ancora una chiave.
+ * L'intenzione viaggia qui perché chi è in ascolto possa smistare la connessione senza doverla
+ * indovinare dal messaggio successivo.
+ */
 @Serializable
 @SerialName("hello")
 data class Hello(
     val protocolVersion: Int,
     val deviceId: String,
-    val displayName: String
+    val displayName: String,
+    val intent: SyncIntent
 ) : SyncMessage
 
 @Serializable

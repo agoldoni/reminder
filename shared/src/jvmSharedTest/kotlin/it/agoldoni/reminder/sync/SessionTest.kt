@@ -40,7 +40,7 @@ class SessionTest {
             if (versioneIniziatore != PROTOCOL_VERSION) {
                 // Un dispositivo con un'altra versione: si presenta e basta.
                 wire.initiatorOutput.sendMessage(
-                    Hello(versioneIniziatore, telefono.deviceId, telefono.displayName)
+                    Hello(versioneIniziatore, telefono.deviceId, telefono.displayName, SyncIntent.SYNC)
                 )
                 val risposta = wire.initiatorInput.receiveMessage()
                 SessionOutcome.Refused(assertIs<Rejected>(risposta).reason)

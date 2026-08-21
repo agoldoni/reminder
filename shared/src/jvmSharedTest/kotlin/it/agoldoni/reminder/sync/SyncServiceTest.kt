@@ -1,0 +1,180 @@
+package it.agoldoni.reminder.sync
+
+import it.agoldoni.reminder.data.FakeEventDao
+import it.agoldoni.reminder.data.FakePeerDao
+import it.agoldoni.reminder.data.PeerEntity
+import it.agoldoni.reminder.platform.AppSettings
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.runBlocking
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+private class FakeSettings(iniziale: Boolean = false) : AppSettings {
+    private val _syncEnabled = MutableStateFlow(iniziale)
+    override val syncEnabled: StateFlow<Boolean> = _syncEnabled.asStateFlow()
+    override fun setSyncEnabled(enabled: Boolean) {
+        _syncEnabled.value = enabled
+    }
+}
+
+class SyncServiceTest {
+
+    private val scope = CoroutineScope(SupervisorJob())
+    private val discovery = FakeDiscovery()
+    private val peers = FakePeerDao()
+    private val settings = FakeSettings()
+
+    private fun servizio(listens: Boolean = true, settings: AppSettings = this.settings) =
+        SyncService(
+            identity = LocalIdentity("id-locale", "Questo dispositivo"),
+            peers = peers,
+            engine = SyncEngine(FakeEventDao(), RecordingAlarmScheduler()) { 1_000L },
+            discovery = discovery,
+            settings = settings,
+            scope = scope,
+            listens = listens,
+            // Porta a zero: la sceglie il sistema, così il test non dipende da una porta libera.
+            port = 0,
+            now = { 2_000L }
+        )
+
+    @AfterTest
+    fun tearDown() {
+        scope.cancel()
+    }
+
+    /**
+     * Il criterio del piano: finché l'interruttore è spento non si apre un socket né parte un
+     * annuncio. È ciò che permette di spegnere la sincronizzazione senza reinstallare nulla.
+     */
+    @Test
+    fun `con la sincronizzazione spenta non si apre niente`() {
+        val servizio = servizio()
+
+        servizio.start()
+
+        assertNull(servizio.status.value.listeningPort, "nessun socket in ascolto")
+        assertFalse(discovery.running, "nessun annuncio sulla rete")
+        assertFalse(servizio.status.value.enabled)
+    }
+
+    @Test
+    fun `accendere avvia ascolto e annuncio, spegnere li chiude`() {
+        val servizio = servizio()
+
+        servizio.enable()
+
+        val porta = assertNotNull(servizio.status.value.listeningPort)
+        assertTrue(porta > 0)
+        assertTrue(discovery.running)
+        assertEquals(
+            porta,
+            discovery.startedWith?.port,
+            "si annuncia la porta su cui si ascolta davvero, non quella di default"
+        )
+        assertEquals("Questo dispositivo", discovery.startedWith?.displayName)
+
+        servizio.disable()
+
+        assertNull(servizio.status.value.listeningPort)
+        assertFalse(discovery.running)
+        assertFalse(servizio.status.value.enabled)
+    }
+
+    @Test
+    fun `chi non ascolta cerca senza annunciarsi`() {
+        val servizio = servizio(listens = false)
+
+        servizio.enable()
+
+        assertNull(servizio.status.value.listeningPort, "il telefono non tiene un socket aperto")
+        assertTrue(discovery.running, "ma cerca comunque gli altri")
+        assertNull(
+            discovery.startedWith,
+            "e non si annuncia: chi provasse a contattarlo troverebbe una porta chiusa"
+        )
+    }
+
+    @Test
+    fun `senza dispositivi associati la sincronizzazione lo dice invece di fallire`() = runBlocking {
+        val servizio = servizio()
+        servizio.enable()
+
+        servizio.syncNow()
+
+        assertEquals("Nessun dispositivo associato.", servizio.status.value.lastMessage)
+        assertFalse(servizio.status.value.syncing)
+    }
+
+    @Test
+    fun `un peer associato ma irraggiungibile produce un messaggio, non un guasto`() = runBlocking {
+        peers.upsert(
+            PeerEntity(
+                deviceId = "id-altro",
+                displayName = "Computer",
+                sharedSecret = randomBytes(32).toHex(),
+                pairedAt = 1_000L
+            )
+        )
+        val servizio = servizio()
+        servizio.enable()
+
+        servizio.syncNow()
+
+        val messaggio = assertNotNull(servizio.status.value.lastMessage)
+        assertTrue("Computer" in messaggio, "il messaggio deve dire con chi: $messaggio")
+        assertTrue(
+            "non è raggiungibile" in messaggio,
+            "e che non si è annunciato né ha un indirizzo noto: $messaggio"
+        )
+        assertFalse(servizio.status.value.syncing, "lo stato non deve restare bloccato")
+    }
+
+    @Test
+    fun `a sincronizzazione spenta un giro non parte`() = runBlocking {
+        peers.upsert(
+            PeerEntity("id-altro", "Computer", randomBytes(32).toHex(), pairedAt = 1_000L)
+        )
+        val servizio = servizio()
+
+        servizio.syncNow()
+
+        assertNull(servizio.status.value.lastMessage, "non deve nemmeno provarci")
+    }
+
+    @Test
+    fun `dissociare toglie le credenziali`() = runBlocking {
+        peers.upsert(
+            PeerEntity("id-altro", "Computer", randomBytes(32).toHex(), pairedAt = 1_000L)
+        )
+        val servizio = servizio()
+
+        servizio.unpair("id-altro")
+
+        assertNull(peers.getById("id-altro"))
+        assertTrue(peers.list().isEmpty())
+    }
+
+    @Test
+    fun `un indirizzo digitato entra nell'elenco anche senza annunci`() {
+        val servizio = servizio()
+
+        val aggiunto = servizio.addManualPeer("192.168.1.42", 47653)
+
+        assertTrue(aggiunto.isSuccess)
+        assertEquals(
+            "La porta deve essere fra 1 e 65535.",
+            servizio.addManualPeer("192.168.1.42", 0).exceptionOrNull()?.message
+        )
+    }
+}

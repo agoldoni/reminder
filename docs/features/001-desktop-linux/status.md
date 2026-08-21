@@ -1,7 +1,7 @@
 # Stato del lavoro — port desktop Linux
 
 **Aggiornato:** 2026-08-21
-**Branch:** `feature/desktop-linux` (13 commit, non ancora unito in `main`)
+**Branch:** `feature/desktop-linux` (14 commit, non ancora unito in `main`)
 
 ---
 
@@ -28,15 +28,17 @@ Compose Multiplatform, ed è distribuibile come AppImage.
 | Discovery mDNS (T-18) | ✅ fatto, round-trip reale verificato su desktop e cablaggio verificato su emulatore |
 | Associazione e canale cifrato (T-19) | ✅ fatto, schema v4 con la tabella `peers` |
 | Motore di replica (T-20) | ✅ fatto, convergenza verificata anche su due database veri |
-| Integrazione e UI (T-21, T-22) | ⏳ da fare |
+| Integrazione (T-21) | ✅ fatto, tutto collegato all'app e verificato all'avvio su entrambe |
+| UI di associazione e stato (T-22) | ⏳ da fare — è l'ultimo pezzo prima dei collaudi |
 
-**Avanzamento:** 36,2 gg completati su 46,0 stimati. Restano **9,8 gg**, tutti di tranche 2.
+**Avanzamento:** 37,7 gg completati su 46,0 stimati. Restano **8,3 gg**.
 
-**82 test automatici** (prima non ce n'erano): export ODS, formattazione date, scheduler desktop,
+**94 test automatici** (prima non ce n'erano): export ODS, formattazione date, scheduler desktop,
 autostart, istanza singola, migrazioni di schema, elenco dei dispositivi, round-trip mDNS reale,
 primitive crittografiche, associazione e sessione cifrata, regola di merge, convergenza fra due
-dispositivi e scambio completo su due database Room veri; strumentati su emulatore la
-riprogrammazione al boot e il cablaggio di `NsdDiscovery`.
+dispositivi, scambio completo su due database Room veri, giro su socket in ascolto e
+orchestrazione col flag spento; strumentati su emulatore la riprogrammazione al boot e il
+cablaggio di `NsdDiscovery`.
 
 ## Come si lavora
 
@@ -104,9 +106,8 @@ ANDROID_SERIAL=emulator-5554 ./gradlew :shared:connectedDebugAndroidTest   # tes
 - Il `sharedSecret` sta **in chiaro** nella tabella `peers`: è protetto dai permessi del file
   (sandbox dell'app su Android, cartella dell'utente su desktop) e non da una cifratura a riposo,
   che richiederebbe un portachiavi diverso per ogni piattaforma.
-- Come per la scoperta, **nulla è ancora collegato all'app**: `peerDao` non è nell'`AppContainer`,
-  non c'è socket in ascolto e non c'è UI. Il server e il cablaggio sono T-21, l'interfaccia T-22.
-  Vale anche per il motore di replica: esiste ed è verificato, ma nessuno lo chiama.
+- Dalla T-21 tutto questo **è collegato all'app**: `SyncService` è nell'`AppContainer` e parte
+  all'avvio su entrambe le piattaforme. Manca solo l'interfaccia (T-22).
 
 ## Che cosa c'è nel motore di replica
 
@@ -142,12 +143,33 @@ Il resto:
 vince anche quando è anteriore. Risolverlo davvero richiede orologi vettoriali; con due dispositivi
 il danno si limita a una modifica concorrente allo stesso evento.
 
+## Come sta insieme, adesso
+
+- `SyncController` è un'**interfaccia in `commonMain`**: `AppContainer` e le schermate vivono lì,
+  socket e crittografia in `jvmSharedMain`. Stessa ragione per cui `AlarmScheduler` è
+  un'interfaccia. `SyncService` la implementa.
+- **Il desktop ascolta sempre, il telefono mai.** Non è una scelta: Android non lascia tenere un
+  socket aperto ad app chiusa. Il telefono sincronizza da `MainActivity.onStart()`, cioè quando è
+  in mano all'utente.
+- **Ci si annuncia solo se si è davvero in ascolto, e con la porta effettiva.** Annunciarne
+  un'altra manderebbe il peer contro un muro. Porta fissa **47653**, così chi deve digitarla a
+  mano ha qualcosa da digitare.
+- **`sync_enabled` è spento di default** ed è ciò che rende innocuo tutto il resto: finché è
+  spento non si apre un socket né parte un annuncio. Si accende quando l'utente completa la prima
+  associazione. Verificato sull'emulatore: dopo l'avvio dell'app `shared_prefs/` contiene solo
+  `device.xml`, nessun file di impostazioni.
+- **Un guasto di rete non risale come eccezione**: diventa un esito con un messaggio in italiano,
+  perché è quello che l'utente deve leggere.
+- Chi riceve un'associazione deve poter mostrare il codice: senza una schermata pronta, il
+  servizio **nega**. Accettare senza che nessuno abbia guardato il codice vanificherebbe il
+  confronto a vista.
+
 ## Prossimo passo
 
-**T-21 — integrazione trasporto ↔ engine**: socket in ascolto sul desktop, sincronizzazione in
-foreground su Android, `peerDao` e `Discovery` nell'`AppContainer`, gestione degli errori. È il
-punto in cui tutto quello che c'è viene finalmente collegato all'app. Poi T-22 (UI di associazione
-e stato), con i test T-25, T-29 e T-30.
+**T-22 — UI di associazione e stato**: elenco dei dispositivi trovati, schermata che mostra il
+codice a sei cifre da confrontare (**non** un campo in cui digitarlo, vedi T-19), stato
+dell'ultimo allineamento, «sincronizza ora», dissociazione e inserimento manuale di host e porta.
+È l'ultimo pezzo di funzionalità; poi restano i collaudi T-25, T-29, T-30 e la documentazione.
 
 Il dettaglio task per task è in [phase-3-implementation-plan.md](phase-3-implementation-plan.md).
 

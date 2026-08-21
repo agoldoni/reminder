@@ -6,6 +6,10 @@ import it.agoldoni.reminder.data.AppDatabase
 import kotlinx.coroutines.Dispatchers
 import java.io.File
 import java.net.InetAddress
+import java.util.Properties
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /** Dati applicativi secondo XDG: `$XDG_DATA_HOME/promemoria` o `~/.local/share/promemoria`. */
 fun appDataDirectory(): File {
@@ -47,3 +51,28 @@ fun createAppDatabase(
         .setDriver(BundledSQLiteDriver())
         .setQueryCoroutineContext(Dispatchers.IO)
         .build()
+
+/** Preferenze in un file di properties accanto al database: stessa cartella, stesso ciclo di vita. */
+class DesktopAppSettings(
+    private val file: File = File(appDataDirectory(), "impostazioni.properties")
+) : AppSettings {
+
+    private val properties = Properties().apply {
+        if (file.isFile) file.inputStream().use(::load)
+    }
+
+    private val _syncEnabled =
+        MutableStateFlow(properties.getProperty(SYNC_ENABLED_KEY)?.toBoolean() ?: false)
+    override val syncEnabled: StateFlow<Boolean> = _syncEnabled.asStateFlow()
+
+    override fun setSyncEnabled(enabled: Boolean) {
+        properties.setProperty(SYNC_ENABLED_KEY, enabled.toString())
+        file.parentFile?.mkdirs()
+        file.outputStream().use { properties.store(it, "Promemoria") }
+        _syncEnabled.value = enabled
+    }
+
+    private companion object {
+        const val SYNC_ENABLED_KEY = "syncEnabled"
+    }
+}
