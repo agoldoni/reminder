@@ -19,6 +19,43 @@ Tests live in `shared/src/jvmSharedTest` (ODS export, date helpers), `shared/src
 (scheduler desktop, migrazione 2→3), `desktopApp/src/test` (autostart, single instance) e
 `shared/src/androidInstrumentedTest` (riprogrammazione al boot, richiede emulatore).
 
+## Prova della UI desktop in una sessione X separata
+
+```bash
+tools/sessione-x.sh avvia [--dati-reali]   # Xephyr + metacity + AppImage su :2
+tools/sessione-x.sh pilota                 # comandi di Pilota.java da stdin
+tools/sessione-x.sh scatto [file]          # screenshot del display separato
+tools/sessione-x.sh chiudi
+```
+
+Serve a guidare l'app senza rubare mouse, fuoco e appunti alla sessione dell'utente. `Xephyr` è
+un server X vero — display, albero di finestre e puntatore propri — ma annidato in una finestra
+di `:0`, così la prova si guarda mentre succede; per l'accesso remoto ci si mette sopra
+`x11vnc -display :2`. `Xvfb` sarebbe headless e non mostrerebbe niente.
+
+Il pilotaggio è `java.awt.Robot` avviato con `DISPLAY=:2` (`tools/Pilota.java`): XTEST consegna
+gli eventi al server X del client che li inietta, quindi su `:0` non arriva nulla — verificato
+campionando puntatore, `_NET_ACTIVE_WINDOW` e appunti durante una raffica di comandi. L'unico
+momento in cui `:0` cambia fuoco è `avvia`, perché ci si apre una finestra nuova.
+
+Quattro cose da sapere prima di fidarsi della prova:
+
+- **Un'istanza per macchina.** `SingleInstance` tiene la porta di loopback 47653, che non è legata
+  al display: con un'altra copia viva quella nella sessione separata si chiude appena parte.
+- **La sandbox isola i file, non la rete.** `XDG_DATA_HOME`/`XDG_CONFIG_HOME` spostano database,
+  `device-id`, voce `.desktop` e icona in `desktopApp/build/sessione-x/sandbox`, ma l'istanza
+  resta un peer a tutti gli effetti: se la si associa a un dispositivo vero, la sincronizzazione
+  porta dentro i promemoria reali e vi lascia un peer che smette di rispondere quando la si
+  smonta. Per una prova di sincronizzazione va bene; per una prova isolata, non associarla.
+- **Le notifiche escono comunque.** `notify-send` passa dal DBus di sessione, non da X: un allarme
+  che scatta durante la prova compare sul desktop reale.
+- **Niente tray e niente GL.** In Xephyr `isTraySupported` è falso (l'app lo gestisce da sé) e
+  Skiko ripiega sul rendering software: `Cannot create Linux GL context` nel log è atteso.
+
+Le coordinate dei click si ricavano dagli screenshot: non c'è un albero di accessibilità da
+interrogare, quindi ogni azione va guardata prima e verificata dopo — meglio ancora
+controllando il database della sandbox, che dice quale riga è stata toccata davvero.
+
 ## Architecture
 
 Compose Multiplatform project targeting Android and desktop JVM, MVVM throughout.
