@@ -132,6 +132,11 @@ L'AppImage risultante (~70 MB, runtime Java incluso) si trova in
 `desktopApp/build/appimage/` e non richiede installazione: basta renderlo eseguibile e lanciarlo.
 Il database desktop vive in `~/.local/share/promemoria/reminder.db`.
 
+Al primo avvio l'app si registra fra le applicazioni del desktop (una voce in
+`~/.local/share/applications/` e l'icona in `~/.local/share/icons/`), così la barra delle
+applicazioni le dà la sua icona e la ritrovi nel menu. Spostando o aggiornando l'AppImage la voce
+viene riscritta da sola al primo avvio dal nuovo percorso.
+
 ## Installazione
 
 ```bash

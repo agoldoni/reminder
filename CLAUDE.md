@@ -52,6 +52,7 @@ target JVM, dove `java.*` è disponibile — `OdsExporter` e le date stanno qui)
 - Notifiche: `notify-send` (libnotify ≥ 0.8) con azioni `-A`; l'azione scelta arriva su stdout.
 - `kotlinx-coroutines-swing` è obbligatoria: senza `Dispatchers.Main` sulla JVM, `viewModelScope` non parte e la UI resta vuota senza errori.
 - Database in `~/.local/share/promemoria/` (XDG), autostart in `~/.config/autostart/promemoria.desktop`.
+- Integrazione col desktop (`DesktopIntegration`): voce in `~/.local/share/applications/` e icona in `hicolor`, così la barra delle applicazioni riconosce la finestra invece di darle un'icona generica. Il legame è `StartupWMClass`, che **deve** combaciare con il `WM_CLASS` della finestra — e quello **non si può scegliere**: i JDK recenti ignorano `awt.appClassName` e lo ricavano dalla classe `main` sostituendo i punti con trattini (`it-agoldoni-reminder-desktop-MainKt`). Per questo `wmClass()` lo calcola con la stessa regola invece di scriverlo a mano.
 - Identità del dispositivo: file `device-id` accanto al database su desktop, `SharedPreferences` su Android (`localDeviceId()` in entrambi i `platform/`).
 
 **Key conventions:**

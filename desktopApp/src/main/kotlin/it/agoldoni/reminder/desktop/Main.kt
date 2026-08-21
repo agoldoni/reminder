@@ -93,6 +93,9 @@ fun main() {
 
     val navigationRequests = MutableSharedFlow<String>(extraBufferCapacity = 1)
     val autostart = Autostart()
+    // Registra l'app fra quelle del desktop: senza, la barra delle applicazioni non sa a chi
+    // appartiene la finestra e le dà un'icona generica.
+    DesktopIntegration().register()
 
     application {
         val visible by windowVisible.collectAsState()
