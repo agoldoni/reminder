@@ -5,6 +5,12 @@
 piano è stato rimosso dopo la prova all'uso. In attesa di prova su rete reale.
 **Piano:** [phase-3-implementation-plan.md](phase-3-implementation-plan.md)
 
+> **Superata in parte dalla 003.** La porta **non parla più in chiaro**: la feature
+> [003-https-web-app](../003-https-web-app/status.md) le ha messo sotto TLS con un certificato
+> autofirmato, chiudendo il rischio R2 di questo piano (il token che viaggiava leggibile). Restano
+> superate anche due affermazioni scritte qui: l'indirizzo ora è `https://`, e la ragione per cui
+> l'installazione PWA non viene offerta non è lo schema ma il certificato non fidato.
+
 ---
 
 ## Task
