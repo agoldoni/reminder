@@ -36,7 +36,17 @@ sealed interface PairingOutcome {
     data class Refused(val reason: String) : PairingOutcome
 }
 
-internal val protocolJson = Json { classDiscriminator = "type"; encodeDefaults = true }
+/**
+ * `ignoreUnknownKeys` è deliberato: permette di aggiungere un campo opzionale al protocollo senza
+ * far cadere i peer che non lo conoscono. Che due versioni si parlino o no lo decide
+ * [PROTOCOL_VERSION], che va alzato per le modifiche **incompatibili**; senza questo, invece,
+ * anche un'aggiunta innocua sarebbe una rottura.
+ */
+internal val protocolJson = Json {
+    classDiscriminator = "type"
+    encodeDefaults = true
+    ignoreUnknownKeys = true
+}
 
 internal fun OutputStream.sendMessage(message: SyncMessage) =
     Frames.write(this, protocolJson.encodeToString(message).encodeToByteArray())

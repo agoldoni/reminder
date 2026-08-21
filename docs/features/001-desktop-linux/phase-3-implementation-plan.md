@@ -361,12 +361,12 @@ piattaforma), **UI**, **Test**, **Doc**.
 | T-29 | ✅ **fatto** — due istanze complete che si trovano da sole via mDNS, si associano confrontando il codice e convergono, **senza che nessuno passi a nessuno un indirizzo scritto a mano**. È l'unico test che mette insieme scoperta e trasporto: separatamente entrambi funzionavano anche quando l'annuncio usciva sull'interfaccia sbagliata o la porta annunciata non era quella d'ascolto. ~5 s, stabile su esecuzioni ripetute | Test | 1,5 | T-21 |
 | T-30 | ⏳ **parziale (0,9 di 1,0)** — su Redmi Note 7 + desktop: migrazioni fino alla v5 sui dati reali, associazione con confronto a vista in **entrambe** le direzioni (telefono→PC via `adb reverse`; **PC→telefono sulla rete vera**), sincronizzazione nei due versi, idempotenza sul campo (nuova associazione, watermark azzerato, eventi rispediti, **nessun duplicato**), e il giro rifatto dopo le correzioni: porta dichiarata salvata al posto di quella effimera, `lastContactAt` in ora locale coerente fra riepilogo e peer, indirizzo proprio mostrato su entrambe le piattaforme. Restano: scoperta mDNS telefono ↔ PC — impossibile qui, i due sono su sottoreti diverse — e i casi offline e conflitto | Test | 1,0 | T-22 |
 | T-31 | ✅ **fatto** — su device: avvio, creazione, allarme programmato e annullato, Fatti, eliminazione, dialog Info, aggiornamento in place dalla versione pre-KMP con dati conservati, export/share (ODS aperto in LibreOffice) e **snooze da notifica** (notifica puntuale, azione +5 min che riprogramma e chiude). La riprogrammazione al boot è coperta da un test strumentato: `BOOT_COMPLETED` è un broadcast protetto e resta verificabile solo con un riavvio vero | Test | 1,0 | T-21, T-24 |
-| T-32 | ⏳ **in corso (0,7 di 1,0)** — `README.md` e `CLAUDE.md` aggiornati a moduli, build desktop e AppImage; i requisiti di rete della sync restano da scrivere quando la tranche 2 esisterà | Doc | 1,0 | T-24 |
-| T-33 | Guida a pairing e rete + note di distribuzione AppImage | Doc | 1,0 | T-30 |
+| T-32 | ✅ **fatto** — `README.md` e `CLAUDE.md` aggiornati; i requisiti di rete della sincronizzazione (porta, mDNS, chi ascolta e quando, cifratura, nessun dato verso internet) sono ora nel README | Doc | 1,0 | T-24 |
+| T-33 | ✅ **fatto** — nel `README.md`: come si associano i due dispositivi, perché il codice si confronta e non si digita, cosa fare quando non si trovano (mDNS è link-local), il fallback manuale, la dissociazione e le note sulle migrazioni non reversibili. Le note di distribuzione AppImage c'erano già | Doc | 1,0 | T-30 |
 
 **Stima totale: 46,0 giorni/uomo** (46,5 iniziali − 0,5 di T-03, rimosso)
 **Breakdown:** Infra 7,5 gg · Core 20,5 gg · UI 7,0 gg · Test 9,0 gg · Doc 2,0 gg
-**Già completati:** 41,2 gg — **tutte le funzionalità sono implementate** e la scoperta è verificata end-to-end. Restano rifiniture di test (T-25), il collaudo dei casi offline e conflitto (T-30) e la documentazione (T-32, T-33). **Restano 4,8 gg.**
+**Già completati:** 45,9 gg. Resta lo **0,1 gg di T-30**: il collaudo sul campo dei casi offline e conflitto. Fuori dal piano restano le voci di rilascio: AppImage da ricostruire, build release firmata e unione in `main`.
 
 **Due tranche:**
 
@@ -436,7 +436,7 @@ device o emulatore Android.
 - [ ] TC-11 → TC-14 eseguiti manualmente e annotati nel documento di collaudo.
 - [x] Nessuna eccezione non gestita nei log durante una sessione di sync completa (verificato in `logcat` sul telefono e nei log del desktop).
 - [ ] L'AppImage si avvia su una macchina pulita senza dipendenze aggiuntive.
-- [ ] `README.md` e `CLAUDE.md` aggiornati.
+- [x] `README.md` e `CLAUDE.md` aggiornati.
 - [ ] Build Android release firmata e installabile sopra la versione precedente.
 
 ---
