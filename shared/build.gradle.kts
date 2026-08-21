@@ -56,6 +56,13 @@ kotlin {
             }
         }
         val desktopMain by getting {
+            // Gli asset della web app (HTML, CSS, JS, icone) servono al codice di `jvmSharedMain`,
+            // che è un source set intermedio: le sue `resources/` non vengono raccolte da AGP —
+            // verificato con `:shared:sourceSets` — e finirebbero nel jar desktop ma non nell'APK.
+            // Perciò stanno in una cartella neutra dichiarata a **entrambi** i target: qui e in
+            // `android.sourceSets["main"]` più sotto. Metterle in un solo posto darebbe una pagina
+            // bianca su una delle due piattaforme, e solo a runtime.
+            resources.srcDir("src/webAssets")
             dependencies {
                 // Su desktop SQLite non è garantito dal sistema: driver bundled
                 implementation(libs.sqlite.bundled)
@@ -68,6 +75,8 @@ kotlin {
 
 android {
     namespace = "it.agoldoni.reminder.shared"
+    // L'altra metà della dichiarazione degli asset: vedi il commento in `desktopMain`.
+    sourceSets["main"].resources.srcDir("src/webAssets")
     compileSdk = 36
     defaultConfig {
         minSdk = 26
