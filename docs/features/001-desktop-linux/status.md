@@ -17,7 +17,7 @@ Compose Multiplatform, ed è distribuibile come AppImage.
 | Notifiche con azioni | ✅ snooze +5 min verificato a runtime | ✅ `notify-send` con azioni, verificato su Cinnamon |
 | Export ODS | ✅ share intent, file aperto in LibreOffice | ✅ dialog di salvataggio nativo |
 | Tray / autostart | — | ✅ tray, chiusura-a-tray, istanza singola, avvio al login |
-| Distribuzione | APK debug 12,2 MB | AppImage 69,6 MB |
+| Distribuzione | APK debug 12,2 MB | AppImage 70,5 MB (`Promemoria-2.0.0-x86_64.AppImage`) |
 
 **Tranche 2 — sincronizzazione: iniziata.** Lo schema del database è pronto a ospitarla.
 

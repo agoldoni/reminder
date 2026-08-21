@@ -435,7 +435,7 @@ device o emulatore Android.
 - [x] TC-06 eseguito con esito positivo (su JVM desktop, non su emulatore: vedi T-26).
 - [ ] TC-11 → TC-14 eseguiti manualmente e annotati nel documento di collaudo.
 - [x] Nessuna eccezione non gestita nei log durante una sessione di sync completa (verificato in `logcat` sul telefono e nei log del desktop).
-- [ ] L'AppImage si avvia su una macchina pulita senza dipendenze aggiuntive.
+- [x] L'AppImage si avvia su una macchina pulita senza dipendenze aggiuntive: `Promemoria-2.0.0-x86_64.AppImage` (70,5 MB) avviata con `XDG_DATA_HOME` vuoto crea i suoi dati allo schema 5, mostra la versione giusta e mette in ascolto la sincronizzazione.
 - [x] `README.md` e `CLAUDE.md` aggiornati.
 - [ ] Build Android release firmata e installabile sopra la versione precedente.
 

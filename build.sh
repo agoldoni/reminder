@@ -9,6 +9,14 @@ ANDROID_SDK="${ANDROID_HOME:-$HOME/Android/Sdk}"
 export ANDROID_HOME="$ANDROID_SDK"
 BUILD_TYPE="${1:-debug}"   # debug | release | desktop
 
+# La versione del prodotto sta in gradle.properties, unica per Android e desktop. Prima si
+# leggeva con sed dai file .gradle.kts, dove era scritta a mano: quando è passata a una
+# proprietà condivisa quell'estrazione ha smesso di trovarla, in silenzio, e gli artefatti sono
+# usciti chiamati "Promemoria--x86_64.AppImage".
+version_prodotto() {
+    sed -nE 's/^promemoriaVersion=(.*)$/\1/p' gradle.properties | head -1
+}
+
 # Verifica Android SDK
 if [ ! -d "$ANDROID_SDK" ]; then
     echo "[ERRORE] Android SDK non trovato in: $ANDROID_SDK"
@@ -49,7 +57,7 @@ case "$BUILD_TYPE" in
         fi
         echo "[INFO] Avvio build release..."
         ./gradlew assembleRelease
-        VERSION_NAME="$(sed -nE 's/^[[:space:]]*versionName[[:space:]]*=[[:space:]]*"(.*)".*/\1/p' androidApp/build.gradle.kts | head -1)"
+        VERSION_NAME="$(version_prodotto)"
         ARTIFACT="androidApp/build/outputs/apk/release/reminder-${VERSION_NAME}.apk"
         ;;
     desktop)
@@ -67,7 +75,7 @@ case "$BUILD_TYPE" in
 
         DIST="desktopApp/build/compose/binaries/main/app/Promemoria"
         APPDIR="desktopApp/build/appimage/Promemoria.AppDir"
-        VERSION_NAME="$(sed -nE 's/^[[:space:]]*packageVersion[[:space:]]*=[[:space:]]*"(.*)".*/\1/p' desktopApp/build.gradle.kts | head -1)"
+        VERSION_NAME="$(version_prodotto)"
         ARTIFACT="desktopApp/build/appimage/Promemoria-${VERSION_NAME}-x86_64.AppImage"
 
         echo "[INFO] Preparazione AppDir..."
