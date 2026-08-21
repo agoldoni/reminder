@@ -358,7 +358,7 @@ piattaforma), **UI**, **Test**, **Doc**.
 | T-26 | ✅ **fatto** — 4 test: eventi v2 conservati, colonne di sync popolate (uuid canonici e distinti, `updatedAt`, `origin`), indice unico attivo, tombstone invisibile all'app ma leggibile da `getByUuid`/`changedSince`. Girano in `desktopTest` su SQLite reale invece che su emulatore: aprire il database con `createAppDatabase` fa validare lo schema a Room, che è la garanzia che dava `MigrationTestHelper` | Test | 0,5 | T-17, T-23 |
 | T-27 | ✅ **fatto** — 10 test: struttura ODS (mimetype STORED per primo, manifest, contenuto), escape XML e le maschere di data | Test | 1,0 | T-15, T-23 |
 | T-28 | ✅ **fatto** — 13 test: autostart, istanza singola e scheduler desktop (scadenza, annullamento, riprogrammazione, bootstrap, azioni Completa e Posticipa) con tempo virtuale | Test | 1,0 | T-14, T-23 |
-| T-29 | Test di integrazione: due istanze desktop che si scoprono, si associano e convergono | Test | 1,5 | T-21 |
+| T-29 | ✅ **fatto** — due istanze complete che si trovano da sole via mDNS, si associano confrontando il codice e convergono, **senza che nessuno passi a nessuno un indirizzo scritto a mano**. È l'unico test che mette insieme scoperta e trasporto: separatamente entrambi funzionavano anche quando l'annuncio usciva sull'interfaccia sbagliata o la porta annunciata non era quella d'ascolto. ~5 s, stabile su esecuzioni ripetute | Test | 1,5 | T-21 |
 | T-30 | ⏳ **parziale (0,9 di 1,0)** — su Redmi Note 7 + desktop: migrazioni fino alla v5 sui dati reali, associazione con confronto a vista in **entrambe** le direzioni (telefono→PC via `adb reverse`; **PC→telefono sulla rete vera**), sincronizzazione nei due versi, idempotenza sul campo (nuova associazione, watermark azzerato, eventi rispediti, **nessun duplicato**), e il giro rifatto dopo le correzioni: porta dichiarata salvata al posto di quella effimera, `lastContactAt` in ora locale coerente fra riepilogo e peer, indirizzo proprio mostrato su entrambe le piattaforme. Restano: scoperta mDNS telefono ↔ PC — impossibile qui, i due sono su sottoreti diverse — e i casi offline e conflitto | Test | 1,0 | T-22 |
 | T-31 | ✅ **fatto** — su device: avvio, creazione, allarme programmato e annullato, Fatti, eliminazione, dialog Info, aggiornamento in place dalla versione pre-KMP con dati conservati, export/share (ODS aperto in LibreOffice) e **snooze da notifica** (notifica puntuale, azione +5 min che riprogramma e chiude). La riprogrammazione al boot è coperta da un test strumentato: `BOOT_COMPLETED` è un broadcast protetto e resta verificabile solo con un riavvio vero | Test | 1,0 | T-21, T-24 |
 | T-32 | ⏳ **in corso (0,7 di 1,0)** — `README.md` e `CLAUDE.md` aggiornati a moduli, build desktop e AppImage; i requisiti di rete della sync restano da scrivere quando la tranche 2 esisterà | Doc | 1,0 | T-24 |
@@ -366,7 +366,7 @@ piattaforma), **UI**, **Test**, **Doc**.
 
 **Stima totale: 46,0 giorni/uomo** (46,5 iniziali − 0,5 di T-03, rimosso)
 **Breakdown:** Infra 7,5 gg · Core 20,5 gg · UI 7,0 gg · Test 9,0 gg · Doc 2,0 gg
-**Già completati:** 39,7 gg — **tutte le funzionalità sono implementate**: della tranche 2 restano i soli collaudi (T-25, T-29, T-30) e la documentazione (T-32, T-33). **Restano 6,3 gg.**
+**Già completati:** 41,2 gg — **tutte le funzionalità sono implementate** e la scoperta è verificata end-to-end. Restano rifiniture di test (T-25), il collaudo dei casi offline e conflitto (T-30) e la documentazione (T-32, T-33). **Restano 4,8 gg.**
 
 **Due tranche:**
 
@@ -422,7 +422,7 @@ device o emulatore Android.
 | TC-07 | Unit | Golden test ODS: `mimetype` STORED come primo entry, righe attese, filtro `OPEN_ONLY` | Media |
 | TC-08 | Unit | Scheduler desktop: scadenza futura programmata, scadenza passata → recupero all'avvio, snooze +5/+60 | Alta |
 | TC-09 | Unit | Autostart: creazione e rimozione del `.desktop`; secondo avvio che non duplica il processo | Media |
-| TC-10 | Integrazione | Due istanze desktop sulla stessa macchina: discovery → pairing → convergenza degli eventi | Alta |
+| TC-10 | ✅ Integrazione | Due istanze desktop sulla stessa macchina: discovery → pairing → convergenza degli eventi | Alta |
 | TC-11 | ~ Manuale | Telefono ↔ desktop: creazione verificata in **entrambe** le direzioni, la seconda su rete vera; modifica e cancellazione restano da provare | Alta |
 | TC-12 | Manuale | Modifiche offline su entrambi i lati, poi rientro in rete: convergenza senza perdite | Alta |
 | TC-13 | Manuale | Notifica desktop a finestra chiusa e ad app riavviata dopo la scadenza | Alta |
