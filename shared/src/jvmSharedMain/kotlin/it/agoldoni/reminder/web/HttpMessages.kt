@@ -74,6 +74,31 @@ internal object Http {
     }
 }
 
+/**
+ * Legge esattamente [quanti] byte, o meno se lo stream finisce prima.
+ *
+ * **Scritta a mano invece di usare `InputStream.readNBytes`, e la ragione va conosciuta**: quel
+ * metodo esiste sulla JVM da Java 9, quindi i test su desktop passano, ma su Android non c'è al
+ * `minSdk` 26 di questo progetto. Il guasto non è nemmeno rumoroso — muore dentro la coroutine che
+ * serve la connessione, il socket si chiude senza rispondere, e il browser vede una risposta
+ * vuota: `curl` dice `000`, non un codice di errore. È lo stesso genere di trappola di
+ * `KeyStore.getDefaultType()` nella feature 003: qualcosa che si rompe **solo** dove i test unitari
+ * non arrivano. Il presidio è `CorpoPiattaformaTest`, che gira su emulatore.
+ *
+ * `read` può restituire meno byte di quanti ne siano stati chiesti anche quando ne arriveranno
+ * altri — su un socket è la norma, non l'eccezione — quindi il ciclo è obbligatorio in ogni caso.
+ */
+internal fun leggiEsattamente(input: InputStream, quanti: Int): ByteArray {
+    val buffer = ByteArray(quanti)
+    var letti = 0
+    while (letti < quanti) {
+        val n = input.read(buffer, letti, quanti - letti)
+        if (n < 0) break
+        letti += n
+    }
+    return if (letti == quanti) buffer else buffer.copyOf(letti)
+}
+
 internal class RigaTroppoLunga : IOException("riga oltre il limite")
 
 /** Una richiesta letta dalla rete, ridotta a ciò che il router deve sapere. */
@@ -215,7 +240,7 @@ private fun leggiCorpo(
     if (lunghezza == 0) return CorpoLetto.Ok("")
     if (metodo !in METODI_CON_CORPO) return CorpoLetto.Malformato("corpo su un metodo che non ne ha")
 
-    val bytes = input.readNBytes(lunghezza)
+    val bytes = leggiEsattamente(input, lunghezza)
     // Meno byte di quanti ne erano stati promessi: il client ha chiuso a metà. Non si lavora su
     // mezzo corpo — e se invece non chiude e tace, interviene il timeout di lettura del socket.
     if (bytes.size < lunghezza) return CorpoLetto.Malformato("corpo più corto del dichiarato")
