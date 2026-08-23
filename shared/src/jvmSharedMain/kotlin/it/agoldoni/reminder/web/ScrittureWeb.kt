@@ -59,8 +59,17 @@ internal data class ModificaWeb(
 
 /** Che cosa è successo a una scrittura. Il router lo traduce in un codice di stato. */
 internal sealed interface EsitoScrittura {
-    /** Fatta. [creato] distingue il `201` dal `200`. */
-    data class Fatta(val creato: Boolean) : EsitoScrittura
+    /**
+     * Fatta. [creato] distingue il `201` dal `200`.
+     *
+     * [id] e [updatedAt] dicono **che cosa** è stato scritto, e servono per una ragione precisa:
+     * la risposta di una scrittura è la lista dei soli promemoria *aperti*, quindi un evento
+     * appena completato non vi compare — e senza il suo `updatedAt` nuovo il browser non potrebbe
+     * annullare la completazione, perché non saprebbe che cosa dichiarare nel controllo
+     * ottimistico. Il router li mette in un header e non nel corpo: nel corpo cambierebbero
+     * l'impronta, e la richiesta condizionale successiva non riceverebbe più `304`.
+     */
+    data class Fatta(val creato: Boolean, val id: Long, val updatedAt: Long) : EsitoScrittura
 
     /** Il corpo non si capisce, o dichiara una lunghezza che non c'è: `400`. */
     data class NonLeggibile(val motivo: String) : EsitoScrittura
@@ -118,7 +127,7 @@ internal class ScrittureWeb(
         )
         val id = dao.insert(evento)
         riprogramma(evento.copy(id = id))
-        return EsitoScrittura.Fatta(creato = true)
+        return EsitoScrittura.Fatta(creato = true, id = id, updatedAt = adesso)
     }
 
     suspend fun modifica(id: Long, corpo: String): EsitoScrittura {
@@ -161,7 +170,7 @@ internal class ScrittureWeb(
                 updatedAt = adesso
             )
         )
-        return EsitoScrittura.Fatta(creato = false)
+        return EsitoScrittura.Fatta(creato = false, id = id, updatedAt = adesso)
     }
 
     /**

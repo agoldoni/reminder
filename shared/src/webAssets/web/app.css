@@ -60,12 +60,17 @@ header {
   position: sticky;
   top: 0;
   z-index: 1;
+  /* Il titolo a sinistra, il comando a destra, e nel mezzo tutto lo spazio che avanza. */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 h1 { margin: 0; font-size: 1.25rem; font-weight: 600; }
 
 /* Su schermo largo il testo non deve stirarsi da un bordo all'altro. */
-main, #avviso, #vuoto { max-width: 46rem; margin: 0 auto; }
+main, #avviso, #vuoto, #serve-app, #annulla-barra { max-width: 46rem; margin: 0 auto; }
 
 main { padding: 16px; display: flex; flex-direction: column; gap: 8px; }
 
@@ -78,6 +83,119 @@ main { padding: 16px; display: flex; flex-direction: column; gap: 8px; }
 }
 
 #vuoto { padding: 48px 16px; text-align: center; color: var(--tenue); }
+
+/*
+  L'app non è aperta sul telefono. Non è un errore — la pagina funziona, semplicemente in sola
+  lettura — quindi non prende il rosso di `#avviso`: è un'informazione, non un guasto.
+*/
+#serve-app {
+  margin: 16px auto 0;
+  padding: 12px 16px;
+  border-left: 4px solid var(--tenue);
+  color: var(--tenue);
+  font-size: 0.9rem;
+}
+
+#annulla-barra {
+  margin: 0 auto 16px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.9rem;
+  color: var(--tenue);
+}
+
+/*
+  I comandi. Bersagli da 44px di lato: è un telefono anche questo, non solo il dispositivo che
+  serve la pagina.
+*/
+.azione {
+  font: inherit;
+  font-size: 0.9rem;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.azione.principale {
+  background: var(--barra-testo);
+  color: var(--barra);
+  border-color: transparent;
+  font-weight: 600;
+}
+
+/*
+  **Spento, non nascosto.** `disabled` da solo lascerebbe il pulsante quasi identico a quello
+  attivo su alcuni browser, e il primo tocco a vuoto sarebbe una sorpresa.
+*/
+.azione:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.comandi {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* --- Il modulo ----------------------------------------------------------------------------- */
+
+#modulo {
+  width: min(32rem, calc(100vw - 32px));
+  border: none;
+  border-radius: 16px;
+  padding: 20px;
+  background: var(--sfondo);
+  color: var(--testo);
+  box-shadow: 0 8px 32px rgb(0 0 0 / 0.35);
+}
+
+#modulo::backdrop { background: rgb(0 0 0 / 0.5); }
+
+#modulo h2 { margin: 0 0 16px; font-size: 1.1rem; }
+
+#modulo label {
+  display: block;
+  margin-top: 12px;
+  margin-bottom: 4px;
+  font-size: 0.85rem;
+  color: var(--tenue);
+}
+
+#modulo input,
+#modulo textarea,
+#modulo select {
+  font: inherit;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--tenue);
+  border-radius: 8px;
+  background: var(--sfondo);
+  color: var(--testo);
+}
+
+#modulo textarea { resize: vertical; }
+
+#modulo-errore {
+  margin: 12px 0 0;
+  color: var(--errore);
+  font-size: 0.9rem;
+}
+
+#modulo .pulsanti {
+  margin-top: 20px;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
 
 .evento {
   background: var(--scaduto-sfondo);

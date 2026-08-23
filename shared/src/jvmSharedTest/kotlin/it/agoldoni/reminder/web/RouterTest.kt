@@ -7,6 +7,7 @@ import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -341,6 +342,24 @@ class RouterTest {
         assertEquals(200, risposta.status)
         assertEquals("nuovo", dao.events.first().title)
         assertEquals(30, dao.events.first().advanceMinutes)
+    }
+
+    @Test
+    fun `una scrittura riuscita dichiara in un header che cosa ha scritto`() {
+        // Nel corpo cambierebbe l'impronta, e chi ha appena salvato non riceverebbe più 304.
+        val creata = crea()
+        val scritto = creata.extra["X-Promemoria-Scritto"]
+        assertNotNull(scritto, "senza questo il browser non può annullare una completazione")
+        assertEquals("${dao.events.first().id}:$orologio", scritto)
+
+        // E il 409 non lo porta: non ha scritto niente.
+        val id = runBlocking { dao.insert(evento(id = 9, titolo = "x", quando = 1_000, aggiornato = 900)) }
+        val conflitto = modifica(
+            id,
+            """{"titolo":"y","dateTimeMillis":9000000,"advanceMinutes":0,"attesoUpdatedAt":1}"""
+        )
+        assertEquals(409, conflitto.status)
+        assertNull(conflitto.extra["X-Promemoria-Scritto"])
     }
 
     @Test

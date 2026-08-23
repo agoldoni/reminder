@@ -17,6 +17,17 @@ private const val PARAMETRO_TOKEN = "t"
 private const val TIPO_RICHIESTO = "application/json"
 
 /**
+ * Che cosa ha scritto l'ultima operazione: `<id>:<updatedAt>`.
+ *
+ * Sta in un header e non nel corpo perché nel corpo cambierebbe l'impronta, e chi ha appena
+ * salvato non riceverebbe più `304` al controllo successivo. Serve al browser per annullare una
+ * completazione: l'evento completato esce dalla lista degli aperti, quindi il suo `updatedAt`
+ * nuovo non c'è da nessun'altra parte, e senza quello il controllo ottimistico non ha che cosa
+ * dichiarare.
+ */
+private const val HEADER_SCRITTO = "X-Promemoria-Scritto"
+
+/**
  * Smista le richieste e applica il controllo d'accesso.
  *
  * Lo smistamento è **prima per metodo e poi per percorso**, e non il contrario: è la struttura che
@@ -113,8 +124,11 @@ internal class Router(
         if (!tipoAmmesso(request)) return HttpResponse.vuota(415)
 
         return when (val esito = azione()) {
-            is EsitoScrittura.Fatta ->
-                conLaLista(if (esito.creato) 201 else 200, accesso)
+            is EsitoScrittura.Fatta -> conLaLista(
+                status = if (esito.creato) 201 else 200,
+                accesso = accesso,
+                extra = mapOf(HEADER_SCRITTO to "${esito.id}:${esito.updatedAt}")
+            )
 
             is EsitoScrittura.NonLeggibile -> HttpResponse.vuota(400)
             is EsitoScrittura.NonValida -> HttpResponse.testo(422, "${esito.campo}: ${esito.motivo}")
@@ -123,13 +137,17 @@ internal class Router(
         }
     }
 
-    private suspend fun conLaLista(status: Int, accesso: Accesso): HttpResponse {
+    private suspend fun conLaLista(
+        status: Int,
+        accesso: Accesso,
+        extra: Map<String, String> = emptyMap()
+    ): HttpResponse {
         val corpo = rappresentazione(accesso)
         return HttpResponse(
             status,
             "application/json; charset=utf-8",
             corpo.bytes,
-            mapOf("ETag" to corpo.etag)
+            extra + ("ETag" to corpo.etag)
         )
     }
 

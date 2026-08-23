@@ -14,15 +14,66 @@
 <body>
   <header>
     <h1>Promemoria</h1>
+    <!-- Compare solo con il token che permette di modificare. -->
+    <button type="button" id="nuovo" class="azione principale" hidden>Nuovo</button>
   </header>
 
   <!-- Compare solo quando il telefono smette di rispondere: una lista vecchia mostrata come se
        fosse fresca è peggio di nessuna lista. -->
   <p id="avviso" hidden></p>
 
+  <!-- Perché i comandi si spengono invece di sparire: nasconderli renderebbe questa pagina
+       identica a quella di sola lettura, e chi ha copiato l'indirizzo con le modifiche penserebbe
+       di aver copiato quello sbagliato. -->
+  <p id="serve-app" hidden>Apri l'app sul telefono per modificare. Da qui puoi guardare.</p>
+
   <main id="elenco" aria-live="polite"></main>
 
   <p id="vuoto" hidden>Nessun evento</p>
+
+  <!-- L'annullamento dell'ultima completazione, finché non si ricarica la pagina. -->
+  <p id="annulla-barra" hidden>
+    <span id="annulla-testo"></span>
+    <button type="button" id="annulla" class="azione">Annulla</button>
+  </p>
+
+  <!--
+    **Il modulo vive fuori da `#elenco`, e non è un dettaglio di impaginazione.**
+    `disegna()` azzera l'elenco e lo ricostruisce, e gira sia al controllo dei dati (ogni 30 s)
+    sia al ricalcolo dei colori (ogni 60 s). Un modulo dentro quell'albero verrebbe cancellato
+    sotto le dita entro un minuto, con dentro quello che si sta scrivendo. Starne fuori è la prima
+    difesa; la seconda è che il ridisegno si sospende mentre il modulo è aperto.
+  -->
+  <dialog id="modulo">
+    <form method="dialog" id="modulo-form">
+      <h2 id="modulo-titolo">Modifica promemoria</h2>
+
+      <label for="campo-titolo">Titolo</label>
+      <input type="text" id="campo-titolo" maxlength="200" required autocomplete="off">
+
+      <label for="campo-descrizione">Descrizione</label>
+      <textarea id="campo-descrizione" rows="3" maxlength="2000"></textarea>
+
+      <label for="campo-quando">Data e ora</label>
+      <input type="datetime-local" id="campo-quando" required>
+
+      <label for="campo-anticipo">Anticipo notifica</label>
+      <select id="campo-anticipo">
+        <option value="0">All'ora dell'evento</option>
+        <option value="5">5 minuti prima</option>
+        <option value="15">15 minuti prima</option>
+        <option value="30">30 minuti prima</option>
+        <option value="60">1 ora prima</option>
+      </select>
+
+      <p id="modulo-errore" hidden></p>
+
+      <div class="pulsanti">
+        <button type="button" id="modulo-annulla" class="azione">Annulla</button>
+        <button type="button" id="modulo-salva" class="azione principale">Salva</button>
+      </div>
+    </form>
+  </dialog>
 
   <script src="/app.js"></script>
 </body>
