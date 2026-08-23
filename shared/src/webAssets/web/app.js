@@ -1,8 +1,11 @@
 'use strict';
 
 /*
-  La pagina fa tre cose separate, e tenerle separate è il punto:
+  La pagina fa quattro cose separate, e tenerle separate è il punto:
 
+  - **si ricorda chi è**: raccoglie il permesso dal frammento dell'indirizzo la prima volta, se lo
+    conserva, e da lì in poi lo presenta in un header — così l'indirizzo torna a essere un
+    indirizzo, cioè qualcosa che si può mettere fra i segnalibri;
   - **resta in attesa** che il telefono le dica che qualcosa è cambiato, e aggiorna la sola scheda
     che è cambiata;
   - ricalcola da sola la fascia cromatica al passare dell'ora, senza chiedere niente;
@@ -61,7 +64,20 @@ var VERSIONE_ATTESA = 2;
 /* Quanto resta accesa l'evidenziazione di una scheda cambiata, prima di iniziare a svanire. */
 var DURATA_EVIDENZA = 2000;
 
-var token = new URLSearchParams(location.search).get('t') || '';
+/*
+  **Dove vive il permesso, dalla feature 006.**
+
+  Prima stava nella query dell'indirizzo: `?t=k7mq3wzp`. Funzionava, e aveva tre difetti che si
+  tenevano per mano — il segnalibro si rompeva a ogni riavvio dell'app, il codice era in bella
+  vista nella barra dell'indirizzo, e non c'era modo di togliere un accesso già dato.
+
+  Adesso il telefono consegna un token firmato **nel frammento** (`#access=…`), che il browser non
+  spedisce mai al server. La pagina lo raccoglie una volta, se lo conserva, ripulisce la barra — e
+  da quel momento l'indirizzo è `https://IP:9888/` e basta.
+*/
+var CHIAVE_ACCESSO = 'promemoria.accesso';
+
+var token = '';
 var etag = null;
 var eventi = [];
 var primaRisposta = false;
@@ -76,6 +92,17 @@ var ritardo = RITARDO_MINIMO;
 /* La scheda è nascosta: nessun giro nuovo. [interrotta] distingue *chi* ha chiuso la richiesta. */
 var fermato = false;
 var interrotta = false;
+
+/*
+  **Il permesso non vale più, e non varrà più: nessun giro, mai più, fino a un ricaricamento.**
+
+  È una bandiera a sé e non `fermato`, e la differenza non è di stile: `fermato` appartiene a
+  `visibilitychange`, e il ramo che rimette in moto il ciclo quando la scheda torna visibile fa
+  `if (!inCorso) giro()`. Riusarla vorrebbe dire che nascondere e riscoprire la scheda fa ripartire
+  un ciclo che sta ricevendo `401` — cioè dieci richieste al minuto contro una soglia di dieci al
+  minuto. Questa invece non la rimette a `false` nessuno.
+*/
+var senzaAccesso = false;
 
 /* Che cosa permette l'indirizzo con cui questa pagina è stata aperta. */
 var puoScrivere = false;
@@ -474,7 +501,7 @@ function applica(dati) {
   [INTERVALLO_MINIMO], che c'è comunque.
 */
 function giro() {
-  if (inCorso || fermato) return;
+  if (inCorso || fermato || senzaAccesso) return;
   inCorso = true;
   interrotta = false;
   annullaProssimo();
@@ -482,7 +509,12 @@ function giro() {
   var partenza = Date.now();
   var cambiato = false;
 
-  var intestazioni = {};
+  /*
+    **Il permesso viaggia qui**, e non nell'indirizzo. Una pagina cross-origin non può apporre
+    questo header né leggere il nostro `localStorage`: il CSRF muore da sé, e il controllo sul
+    `Content-Type` delle scritture resta come seconda rete invece che come prima.
+  */
+  var intestazioni = { 'Authorization': 'Bearer ' + token };
   if (etag) intestazioni['If-None-Match'] = etag;
 
   controllore = new AbortController();
@@ -497,7 +529,7 @@ function giro() {
     controllore.abort();
   }, ATTESA_SERVER + MARGINE_GUARDIA);
 
-  fetch('/api/eventi?t=' + encodeURIComponent(token) + '&attendi=1', {
+  fetch('/api/eventi?attendi=1', {
     cache: 'no-store',
     headers: intestazioni,
     signal: controllore.signal
@@ -507,11 +539,14 @@ function giro() {
       mostraAvviso('');
       return null;
     }
-    if (risposta.status === 403) {
-      // Su una **lettura** il 403 vuol dire una cosa sola: l'indirizzo è scaduto. Su una
-      // scrittura ne vorrebbe dire un'altra — vedi `spiegaRifiuto`.
-      mostraAvviso('Indirizzo non più valido: la porta è stata riaperta e serve il nuovo ' +
-        'indirizzo mostrato sul telefono.');
+    if (risposta.status === 401) {
+      /*
+        **Su una lettura questo è l'unico rifiuto possibile**, perché entrambi i permessi leggono:
+        se il telefono dice di no, è perché non sa più chi siamo. Fino alla feature 005 qui
+        arrivava un `403` e bisognava indovinare il significato dal contesto; adesso i due casi
+        sono due codici, e `perduto()` può fare la cosa giusta senza dubbi.
+      */
+      perduto();
       return null;
     }
     if (!risposta.ok) {
@@ -564,7 +599,7 @@ function chiudiGiro() {
 
 function programma(fra) {
   annullaProssimo();
-  if (fermato) return;
+  if (fermato || senzaAccesso) return;
   timerGiro = setTimeout(function () {
     timerGiro = null;
     giro();
@@ -581,12 +616,20 @@ function annullaProssimo() {
 /* --- Scritture ------------------------------------------------------------------------------ */
 
 /*
-  Il 403 su una scrittura non significa quello che significa su una lettura: qui vuol dire che
-  questo è l'indirizzo di sola lettura. Dirlo «indirizzo scaduto» manderebbe a riaccendere
-  l'interruttore per niente. La distinzione si fa **qui**, in base a che cosa si stava facendo:
-  sul filo le due risposte sono identiche di proposito.
+  **Dalla feature 006 questa funzione non deve più indovinare.** Prima il telefono rispondeva `403`
+  a tutto e il significato si ricavava da che cosa si stava facendo: su una lettura «indirizzo
+  scaduto», su una scrittura «indirizzo di sola lettura». Adesso sono due codici diversi, e i due
+  messaggi non possono più finire scambiati.
+
+  Sul filo restano indistinguibili le quattro condizioni del `401` — assente, storto, firma
+  sbagliata, scaduto — per la ragione della feature 002: separarle non servirebbe all'utente e
+  servirebbe a chi sonda.
 */
 function spiegaRifiuto(stato, corpo) {
+  if (stato === 401) {
+    return 'Questo indirizzo non è più valido: è scaduto, oppure è stato revocato dal telefono. ' +
+      'Riaprilo dall\'app.';
+  }
   if (stato === 403) {
     return 'Questo indirizzo permette solo di guardare. Per modificare serve l\'altro indirizzo, ' +
       'quello che il telefono mostra sotto «Serve anche modificare dal browser?».';
@@ -610,10 +653,13 @@ function spiegaRifiuto(stato, corpo) {
   testo digitato non va perso.
 */
 function invia(percorso, metodo, corpo, onFatto, onErrore) {
-  fetch(percorso + '?t=' + encodeURIComponent(token), {
+  fetch(percorso, {
     method: metodo,
     cache: 'no-store',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + token
+    },
     body: JSON.stringify(corpo)
   }).then(function (risposta) {
     if (risposta.ok) {
@@ -623,6 +669,17 @@ function invia(percorso, metodo, corpo, onFatto, onErrore) {
         mostraAvviso('');
         onFatto(scritto);
       });
+    }
+    if (risposta.status === 401) {
+      /*
+        **Il 403 e il 401 non si trattano allo stesso modo, ed è tutta la differenza.** Un token
+        respinto con `403` è un token **buono**: è quello di sola lettura, e buttarlo via
+        toglierebbe l'accesso a chi ha semplicemente toccato un pulsante che non doveva esserci.
+        Un `401` invece dice che il permesso non vale più, e allora va cancellato.
+      */
+      perduto();
+      onErrore(spiegaRifiuto(401, null));
+      return null;
     }
     if (risposta.status === 409) {
       // Anche il conflitto porta la lista aggiornata: si assorbe **prima** di dirlo, così quando
@@ -783,6 +840,122 @@ modulo.addEventListener('close', function () {
 bottoneNuovo.addEventListener('click', function () { apriModulo(null); });
 bottoneAnnulla.addEventListener('click', annullaCompletamento);
 
+/* --- Il permesso ---------------------------------------------------------------------------- */
+
+/*
+  **Ogni accesso a `localStorage` è protetto**, e non per scrupolo: in modalità privata, con i dati
+  del sito bloccati o in certi contesti incorporati, il solo fatto di *leggerlo* lancia. La pagina
+  deve funzionare almeno per questa sessione anche là dove non può ricordarsi niente.
+*/
+function conserva(valore) {
+  try {
+    window.localStorage.setItem(CHIAVE_ACCESSO, valore);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function conservato() {
+  try {
+    return window.localStorage.getItem(CHIAVE_ACCESSO) || '';
+  } catch (e) {
+    return '';
+  }
+}
+
+function dimentica() {
+  try {
+    window.localStorage.removeItem(CHIAVE_ACCESSO);
+  } catch (e) {
+    /* Non c'era niente da togliere: va bene lo stesso. */
+  }
+}
+
+/*
+  Raccoglie il permesso e restituisce il token, o stringa vuota se non ce n'è.
+
+  **Se non si è riusciti a conservarlo, il frammento si lascia dov'è** — ed è una scelta, non una
+  dimenticanza. Ripulire la barra su un browser che non sa ricordare niente ucciderebbe la pagina al
+  primo ricaricamento, senza che l'utente possa capire perché. Lasciandolo, quel browser degrada
+  esattamente al comportamento della versione precedente: l'indirizzo va tenuto per intero. In più
+  il token non passa comunque dal filo, che era metà del punto.
+*/
+function raccogliPermesso() {
+  var dalFrammento = new URLSearchParams(location.hash.replace(/^#/, '')).get('access');
+  if (dalFrammento) {
+    if (conserva(dalFrammento)) ripulisciBarra();
+    return dalFrammento;
+  }
+  return conservato();
+}
+
+function ripulisciBarra() {
+  try {
+    history.replaceState(null, '', location.pathname);
+  } catch (e) {
+    /* Senza `replaceState` l'indirizzo resta lungo: è brutto, non è rotto. */
+  }
+}
+
+/*
+  **Un permesso che arriva a pagina già aperta, e il motivo per cui questo pezzo non è facoltativo.**
+
+  Incollare `https://IP:9888/#access=…` in una scheda che sta già mostrando `https://IP:9888/` è
+  una navigazione **nello stesso documento**: cambia solo il frammento, il browser non ricarica
+  niente e lo script non riparte. Senza questo ascoltatore la pagina resterebbe con il permesso di
+  prima — o senza nessuno — mentre la barra dell'indirizzo mostra quello nuovo. È il difetto
+  peggiore possibile qui, perché **non si vede**: l'utente ha fatto la cosa giusta e non succede
+  niente.
+
+  Ed è il caso normale, non un caso limite: succede tutte le volte che si consegna un indirizzo
+  nuovo dopo una revoca, o si passa da quello di sola lettura a quello che comanda.
+*/
+window.addEventListener('hashchange', function () {
+  var arrivato = new URLSearchParams(location.hash.replace(/^#/, '')).get('access');
+  if (!arrivato || arrivato === token) return;
+
+  token = arrivato;
+  if (conserva(arrivato)) ripulisciBarra();
+  senzaAccesso = false;
+  /*
+    L'impronta di prima non vale più: i permessi stanno **dentro** il corpo, quindi due token
+    diversi hanno impronte diverse. Azzerarla forza una risposta intera, che è ciò che serve —
+    le schede vanno rifatte, perché i comandi ci sono o non ci sono.
+  */
+  etag = null;
+  mostraAvviso('');
+
+  /*
+    Una richiesta partita con il permesso di prima va **chiusa**, non aspettata. Se quel permesso
+    era stato revocato risponderebbe `401`, e `perduto()` cancellerebbe il permesso appena
+    arrivato: l'utente vedrebbe fallire proprio l'indirizzo che ha appena incollato. Chiudendola,
+    è la `catch` a far ripartire il ciclo — con il token nuovo.
+  */
+  if (inCorso && controllore) {
+    interrotta = true;
+    controllore.abort();
+  } else {
+    giro();
+  }
+});
+
+/*
+  Il permesso non vale più: scaduto o revocato dal telefono.
+
+  Si **cancella** quello conservato, perché un ricaricamento ripeterebbe lo stesso errore, e si
+  **ferma il ciclo**: senza, la pagina ripartirebbe ogni cinque secondi e brucerebbe la soglia dei
+  tentativi per niente, facendo lampeggiare un avviso che dice sempre la stessa cosa.
+*/
+function perduto() {
+  senzaAccesso = true;
+  token = '';
+  dimentica();
+  annullaProssimo();
+  mostraAvviso('Questo indirizzo non è più valido: è scaduto, oppure è stato revocato dal ' +
+    'telefono. Riaprilo dall\'app, alla voce «Consulta dal browser».');
+}
+
 /* --- Il ritmo ------------------------------------------------------------------------------- */
 
 /*
@@ -814,4 +987,22 @@ document.addEventListener('visibilitychange', function () {
 // Il colore si aggiorna anche a rete ferma: è tutto calcolo locale, e adesso non ridisegna niente.
 setInterval(aggiornaColori, INTERVALLO_COLORI);
 
-giro();
+/*
+  **L'avvio, e il caso che prima non poteva esistere: nessun permesso.**
+
+  Finché il token stava nell'indirizzo, aprire la pagina senza token voleva dire non vederla
+  affatto — rispondeva il telefono, con un `403`. Adesso `/` è pubblica, quindi qui ci si può
+  arrivare a mani vuote: succede a chi digita l'indirizzo senza il frammento su un browser che non
+  è mai stato autorizzato, o dopo aver svuotato i dati del sito.
+
+  In quel caso **non si fa partire nessun giro di rete**: non c'è niente da chiedere, e chiederlo
+  consumerebbe la soglia dei tentativi per scoprire una cosa che si sa già.
+*/
+token = raccogliPermesso();
+if (token) {
+  giro();
+} else {
+  mostraAvviso('Questa pagina va aperta dall\'indirizzo che il telefono mostra alla voce ' +
+    '«Consulta dal browser». Serve per intero, codice compreso: da lì in poi basterà questo ' +
+    'indirizzo, senza codice.');
+}
