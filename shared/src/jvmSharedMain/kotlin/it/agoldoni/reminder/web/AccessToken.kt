@@ -1,112 +1,120 @@
 package it.agoldoni.reminder.web
 
 import it.agoldoni.reminder.platform.nowMillis
-import it.agoldoni.reminder.sync.constantTimeEquals
-import it.agoldoni.reminder.sync.randomBytes
 import java.util.concurrent.ConcurrentHashMap
-
-/**
- * Alfabeto senza caratteri che si confondono a leggerli da uno schermo e a ridigitarli su un altro:
- * niente `i`, `l`, `o` fra le lettere e niente `1` fra le cifre. Sono esattamente 32 simboli, così
- * ogni carattere consuma cinque bit **senza polarizzazione**: prendendo il resto di una divisione
- * su un alfabeto di lunghezza diversa alcuni simboli uscirebbero più spesso di altri.
- */
-private const val ALFABETO = "abcdefghjkmnpqrstuvwxyz023456789"
-
-/** Otto caratteri, quaranta bit. Dimensionato su [SOGLIA_TENTATIVI], non sulla forza da solo. */
-private const val LUNGHEZZA = 8
 
 /**
  * Tentativi falliti tollerati da uno stesso indirizzo prima di smettere di rispondere.
  *
- * Dieci al minuto contro quaranta bit vuol dire che indovinare richiederebbe tempi geologici: è
- * la **coppia** token corto + soglia bassa a reggere, non il token da solo. Alzare la soglia
- * senza allungare il token romperebbe l'equilibrio.
+ * **Che cosa difende, adesso.** Fino alla feature 005 era metà della sicurezza: quaranta bit di
+ * token contro dieci tentativi al minuto. Contro una firma HMAC-SHA256 non serve più a fermare chi
+ * indovina — non si indovina una firma da 256 bit nemmeno con tutto il tempo del mondo — e resta per
+ * una ragione più modesta: **bocciare chi sonda a raffica**, che su una porta esposta in rete
+ * capita. Costa una `ConcurrentHashMap` e vale la pena tenerla.
  */
 private const val SOGLIA_TENTATIVI = 10
 
 /**
  * La finestra dopo la quale i tentativi si dimenticano. Un blocco definitivo trasformerebbe dieci
- * errori di battitura in un servizio da riavviare: chi sbaglia a digitare è quasi sempre
- * l'utente, non un attaccante.
+ * richieste sbagliate in un servizio da riavviare.
  */
 private const val FINESTRA_MILLIS = 60_000L
 
 /**
- * I due segreti di una accensione. Non sono due livelli dello stesso token: sono **due token
- * diversi**, e il potere sta in quale dei due si è digitato nell'indirizzo.
+ * I due indirizzi che l'app mostra, e l'istante in cui smetteranno di valere.
  *
- * Perché due invece di un interruttore «consenti modifiche» nell'app: così [lettura] diventa una
- * cosa che si può **dare a qualcun altro**. Con un interruttore solo bisognava scegliere fra
- * «tutti guardano» e «tutti comandano».
+ * **Non sono due livelli dello stesso token: sono due token diversi**, e il potere sta in quale dei
+ * due si è consegnato. È questo a rendere [lettura] una cosa che si può **dare a qualcun altro**;
+ * con un solo token più un interruttore «consenti modifiche» bisognerebbe scegliere fra «tutti
+ * guardano» e «tutti comandano».
+ *
+ * [scadenzaMillis] è **una sola** perché i due si coniano nello stesso istante e con la stessa
+ * durata: due campi suggerirebbero una differenza che non c'è.
  */
-internal data class CoppiaToken(val lettura: String, val scrittura: String)
+internal data class CoppiaToken(
+    val lettura: String,
+    val scrittura: String,
+    val scadenzaMillis: Long
+)
 
 /**
- * I token che aprono la web app, con la loro difesa contro i tentativi ripetuti.
+ * Chi conia i token d'accesso alla web app e chi li verifica, con la difesa contro chi sonda.
  *
- * Si rigenerano a ogni accensione e si invalidano a ogni spegnimento: un indirizzo copiato ieri
- * non funziona oggi, ed è questo a rendere accettabile che il token viaggi nell'URL.
+ * **La differenza rispetto alla feature 004 è dove vive il segreto.** Prima erano otto caratteri
+ * tenuti in memoria e rigenerati a ogni accensione: l'indirizzo *era* la credenziale, quindi
+ * l'indirizzo moriva ogni volta che moriva il processo. Adesso il segreto è la chiave di firma su
+ * disco ([ChiaveFirma]) e il token è solo ciò che con quella chiave si può dimostrare — così
+ * spegnere l'interruttore chiude la porta senza cambiare le serrature, e per cambiarle c'è un gesto
+ * suo, [revoca].
  *
- * **Il contatore dei tentativi resta uno solo** anche con due segreti. È per indirizzo IP, non per
- * token: sdoppiarlo regalerebbe a chi sonda venti tentativi al minuto invece di dieci, che è
- * esattamente la metà della coppia «token corto + soglia bassa» su cui poggia tutto.
+ * **Il contatore dei tentativi resta uno solo** anche con due token, ed è per indirizzo IP:
+ * sdoppiarlo regalerebbe a chi sonda venti tentativi al minuto invece di dieci.
  */
 internal class AccessToken(
+    private val chiavi: ChiaveFirma,
     private val now: () -> Long = ::nowMillis,
-    private val genera: () -> String = ::tokenCasuale
+    private val durataMillis: Long = DURATA_ACCESSO_MILLIS
 ) {
-
-    @Volatile
-    private var corrente: CoppiaToken? = null
 
     private val tentativi = ConcurrentHashMap<String, Tentativi>()
 
-    val coppia: CoppiaToken? get() = corrente
-
     /**
-     * Due token nuovi, e tentativi azzerati: la sessione precedente non lascia strascichi.
+     * I due indirizzi da mostrare, freschi.
      *
-     * I due sono diversi per costruzione. Con quaranta bit una collisione è teorica, ma se
-     * capitasse i due indirizzi sarebbero lo stesso indirizzo — e quello di sola lettura
-     * comanderebbe. Costa un confronto.
+     * **Coniarne di nuovi non invalida quelli consegnati prima**, ed è tutta la feature: questi due
+     * sono buoni di consegna, non l'identità del servizio. Per questo `apri()` può chiamarla a ogni
+     * ritorno in primo piano senza fare danni, mentre la stessa disinvoltura su [ChiaveFirma]
+     * butterebbe fuori tutti.
+     *
+     * L'orologio si legge **una volta** per tutti e due, così la scadenza dichiarata è la stessa e
+     * non «quasi la stessa». Nessun controllo che i due siano diversi, a differenza della 004: i
+     * payload differiscono nel campo `p`, quindi non possono coincidere per costruzione.
+     *
+     * Solleva se la chiave non si può preparare: chi conia è `WebService.apri()`, che lo trasforma
+     * in un messaggio e **non apre la porta** — vedi [ChiaveFirma].
      */
-    fun rigenera(): CoppiaToken {
-        tentativi.clear()
-        val lettura = genera()
-        var scrittura = genera()
-        while (scrittura == lettura) scrittura = genera()
-        return CoppiaToken(lettura, scrittura).also { corrente = it }
+    fun coniaCoppia(): CoppiaToken {
+        val adesso = now()
+        val chiave = chiavi.caricaOCrea()
+        val lettura = Jwt.firma(PermessiWeb.LETTURA, chiave, adesso, durataMillis)
+        val scrittura = Jwt.firma(PermessiWeb.SCRITTURA, chiave, adesso, durataMillis)
+        return CoppiaToken(lettura.token, scrittura.token, lettura.scadenzaMillis)
     }
 
-    fun invalida() {
-        corrente = null
+    /**
+     * Una chiave di firma nuova: **ogni indirizzo consegnato finora smette di valere**.
+     *
+     * I tentativi si azzerano insieme, come faceva `rigenera()`: chi arriva dopo una revoca comincia
+     * da capo, e chi stava sondando non si porta dietro il conto.
+     */
+    fun revoca() {
+        chiavi.revoca()
         tentativi.clear()
     }
 
     /**
-     * [provenienza] è l'indirizzo da cui arriva la richiesta: la soglia è per indirizzo, non
+     * [provenienza] è l'indirizzo da cui arriva la richiesta: la soglia è per indirizzo e non
      * globale, perché un attaccante non deve poter chiudere fuori l'utente riempiendo il conto.
      */
     fun verifica(offerto: String?, provenienza: String): Accesso {
-        val attesi = corrente ?: return Accesso.NEGATO
+        // Un guasto della chiave **non** è un tentativo fallito di chi sta chiedendo: è nostro, e
+        // non deve consumargli la soglia. In pratica non capita — `apri()` la prepara prima di
+        // aprire il socket, e da lì in poi è in memoria — ma un `500` dentro il gestore direbbe a
+        // chi sonda che ha trovato qualcosa.
+        val chiave = runCatching { chiavi.caricaOCrea() }.getOrNull() ?: return Accesso.NEGATO
+
         if (bloccato(provenienza)) return Accesso.BLOCCATO
-        val bytes = offerto?.encodeToByteArray()
-        if (bytes == null) {
+
+        val accesso = Jwt.verifica(offerto, chiave, now())
+        if (accesso == null) {
             registraFallimento(provenienza)
             return Accesso.NEGATO
         }
 
-        // **Entrambi i confronti si eseguono sempre**, e i risultati si guardano dopo. Fermarsi al
-        // primo che coincide reintrodurrebbe una differenza di tempo fra «era il primo» e «era il
-        // secondo», che è precisamente ciò che `constantTimeEquals` esiste per togliere.
-        val eScrittura = constantTimeEquals(bytes, attesi.scrittura.encodeToByteArray())
-        val eLettura = constantTimeEquals(bytes, attesi.lettura.encodeToByteArray())
-
-        return when {
-            eScrittura -> { tentativi.remove(provenienza); Accesso.SCRITTURA }
-            eLettura -> { tentativi.remove(provenienza); Accesso.LETTURA }
-            else -> { registraFallimento(provenienza); Accesso.NEGATO }
+        tentativi.remove(provenienza)
+        return when (accesso.p) {
+            PermessiWeb.LETTURA -> Accesso.LETTURA
+            PermessiWeb.SCRITTURA -> Accesso.SCRITTURA
         }
     }
 
@@ -134,9 +142,9 @@ internal class AccessToken(
 }
 
 /**
- * Esito del controllo. [NEGATO] e [BLOCCATO] devono produrre **la stessa** risposta sul filo: sono
- * distinti solo perché il secondo dice che il confronto non è nemmeno avvenuto, cosa che serve a
- * poterlo verificare in un test.
+ * Esito del controllo. [NEGATO] e [BLOCCATO] devono produrre **la stessa** risposta sul filo — un
+ * `401` — e sono distinti solo perché il secondo dice che il confronto non è nemmeno avvenuto, cosa
+ * che serve a poterlo verificare in un test.
  */
 internal enum class Accesso {
     LETTURA,
@@ -145,17 +153,17 @@ internal enum class Accesso {
     BLOCCATO;
 
     /**
-     * Il token di scrittura vale **anche** per leggere: senza, la pagina servita sull'indirizzo
-     * completo non potrebbe caricare la propria lista, e servirebbero due schede aperte.
+     * Il token di scrittura vale **anche** per leggere: senza, la pagina aperta con l'indirizzo
+     * completo non potrebbe caricare la propria lista.
      */
     val puoLeggere: Boolean get() = this == LETTURA || this == SCRITTURA
 
     val puoScrivere: Boolean get() = this == SCRITTURA
-}
 
-private fun tokenCasuale(): String {
-    val bytes = randomBytes(LUNGHEZZA)
-    return buildString(LUNGHEZZA) {
-        for (b in bytes) append(ALFABETO[b.toInt() and 0x1f])
-    }
+    /**
+     * Se il rifiuto è «non so chi sei» invece di «so chi sei e non ti basta». È la distinzione che
+     * separa il `401` dal `403`, e il client la usa per decidere se buttare via il token che ha:
+     * un token di sola lettura respinto su una scrittura è un token **buono**.
+     */
+    val autenticato: Boolean get() = this == LETTURA || this == SCRITTURA
 }

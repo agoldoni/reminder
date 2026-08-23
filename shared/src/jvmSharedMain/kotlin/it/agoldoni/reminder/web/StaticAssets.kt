@@ -23,15 +23,23 @@ internal data class Asset(
  * è una chiave di questa mappa semplicemente non esiste, quindi la risalita non è respinta — è
  * impossibile. Il controllo sui `..` che fa il parser è una seconda rete, non la prima.
  *
- * Il token protegge `/` e i dati; non gli asset. CSS, JavaScript, manifest e icone non contengono
- * niente di personale, e pretendere il token anche su di essi complicherebbe le richieste che il
- * browser fa **fuori** dal contesto della pagina — il manifest e le icone che vi sono elencate.
- * Il prezzo, dichiarato: una richiesta senza token a `/app.css` rivela che il servizio è acceso.
+ * **Dalla feature 006 nessun asset è protetto, `/` compresa**, e non è una rinuncia: è il vincolo
+ * da cui nasce l'indirizzo fisso. Il browser che apre `https://IP:9888/` non può mandare un header
+ * prima di aver caricato il JavaScript, quindi la pagina dev'essere il **guscio** che poi si
+ * autentica. `index.html` non contiene nessun promemoria — è markup vuoto — e il prezzo, che la 002
+ * aveva già accettato e dichiarato per `/app.css`, è che una richiesta senza credenziali rivela che
+ * il servizio è acceso. Il controllo d'accesso resta intero dove stanno i dati, cioè su
+ * `/api/eventi`.
+ *
+ * **[Asset.tokenRichiesto] resta**, anche se oggi vale `false` su tutte e sei le righe. Non è il
+ * controllo: è ciò che obbliga chi ne aggiunge una settima a decidere chi può leggerla. Toglierlo
+ * per «semplificare» vorrebbe dire che la prossima risorsa nasce senza che nessuno si sia posto la
+ * domanda.
  */
 internal object StaticAssets {
 
     private val AMMESSI: Map<String, Asset> = mapOf(
-        "/" to Asset("web/index.html", "text/html; charset=utf-8", tokenRichiesto = true),
+        "/" to Asset("web/index.html", "text/html; charset=utf-8", tokenRichiesto = false),
         "/app.css" to Asset("web/app.css", "text/css; charset=utf-8", tokenRichiesto = false),
         "/app.js" to Asset("web/app.js", "text/javascript; charset=utf-8", tokenRichiesto = false),
         "/manifest.json" to Asset("web/manifest.json", "application/manifest+json", tokenRichiesto = false),

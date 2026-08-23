@@ -27,7 +27,14 @@ private const val VALIDITA_GIORNI = 3650
  * nascere un certificato nuovo è che non ce ne sia già uno. Non la scadenza (un certificato che
  * nessuno valida continua a funzionare anche scaduto, e riemetterlo sarebbe un avviso regalato),
  * non il cambio di indirizzo (il `subjectAltName` non viene verificato da nessuno), non lo
- * spegnimento dell'interruttore (che invalida il **token**, non l'identità del server).
+ * spegnimento dell'interruttore (che dalla feature 006 non invalida più nemmeno i token: chiude la
+ * porta e basta).
+ *
+ * **Il fratello di questa classe è [ChiaveFirma]**, che custodisce la chiave con cui si firmano i
+ * token d'accesso e ha la stessa guardia per la stessa ragione — con la posta più alta: un
+ * certificato rigenerato rimette l'utente davanti a un avviso, una chiave di firma rigenerata
+ * butta fuori tutti i browser insieme. Un caso in cui le due divergono: un file rotto qui si
+ * rigenera e si tira avanti, là no.
  *
  * **Due file DER e non un PKCS#12:** un archivio su file vuole una password, e una password che
  * sta nel sorgente dichiara una protezione che non esiste. Qui la protezione sono i permessi —
@@ -97,17 +104,22 @@ internal class CertificateStore(
         fileCertificato.writeBytes(identita.certificato.encoded)
     }
 
-    /**
-     * Toglie i permessi a tutti e li ridà solo al proprietario. Su Android è già così — `filesDir`
-     * nasce privata — ma il codice gira anche sul target desktop, dove la `umask` decide e può
-     * essere permissiva. Il certificato è pubblico per definizione e non ha bisogno di nulla.
-     */
-    private fun soloPerNoi(file: File) {
-        file.setReadable(false, false)
-        file.setWritable(false, false)
-        file.setExecutable(false, false)
-        file.setReadable(true, true)
-        file.setWritable(true, true)
-        if (file.isDirectory) file.setExecutable(true, true)
-    }
+}
+
+/**
+ * Toglie i permessi a tutti e li ridà solo al proprietario. Su Android è già così — `filesDir`
+ * nasce privata — ma il codice gira anche sul target desktop, dove la `umask` decide e può essere
+ * permissiva. Il certificato è pubblico per definizione e non ha bisogno di nulla.
+ *
+ * **Sta fuori da [CertificateStore] perché i segreti in questa cartella sono due**: la chiave TLS e
+ * la chiave di firma dei token ([ChiaveFirma]). Copiarne una versione per ciascuno vorrebbe dire
+ * avere due posti in cui stringere i permessi, e quindi due posti in cui dimenticarselo.
+ */
+internal fun soloPerNoi(file: File) {
+    file.setReadable(false, false)
+    file.setWritable(false, false)
+    file.setExecutable(false, false)
+    file.setReadable(true, true)
+    file.setWritable(true, true)
+    if (file.isDirectory) file.setExecutable(true, true)
 }

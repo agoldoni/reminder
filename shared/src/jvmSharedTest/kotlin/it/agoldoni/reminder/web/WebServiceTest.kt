@@ -110,7 +110,10 @@ class WebServiceTest {
         assertNotNull(stato.port)
         assertEquals("192.168.1.42", stato.host)
         assertNotNull(stato.tokenLettura)
-        assertEquals("https://192.168.1.42:${stato.port}/?t=${stato.tokenLettura}", stato.urlLettura)
+        // **Frammento e non query**: il token non viene mai spedito al server, ed è questo a
+        // rendere l'indirizzo qualcosa che si può mettere fra i segnalibri.
+        assertEquals("https://192.168.1.42:${stato.port}/#access=${stato.tokenLettura}", stato.urlLettura)
+        assertNotNull(stato.validoFinoA, "l'utente deve poter sapere fino a quando vale")
         assertTrue(raggiungibile(stato.port!!))
         assertTrue(custode.vivo, "senza custode la porta morirebbe appena l'app va in background")
         web.disable()
@@ -144,8 +147,16 @@ class WebServiceTest {
         web.disable()
     }
 
+    /**
+     * **Questa asserzione è rovesciata rispetto alla feature 004, ed è la feature 006.**
+     *
+     * Prima diceva «un indirizzo copiato prima non deve valere» e verificava che riaccendere
+     * cambiasse il token. Adesso verifica il contrario: l'interruttore **chiude la porta, non
+     * cambia le serrature**. Non è un test aggiustato per farlo passare — è il difetto che si sta
+     * togliendo, scritto al rovescio. Le serrature si cambiano con `revoke()`, provato qui sotto.
+     */
     @Test
-    fun `spegnere chiude la porta, congeda il custode e invalida il token`() {
+    fun `spegnere chiude la porta e congeda il custode, ma non revoca niente`() {
         val custode = CustodeDiProva()
         val web = servizio(custode = custode)
         web.enable()
@@ -155,13 +166,81 @@ class WebServiceTest {
         web.disable()
         assertFalse(web.status.value.enabled)
         assertFalse(web.status.value.listening)
-        assertNull(web.status.value.tokenLettura)
+        assertNull(web.status.value.tokenLettura, "niente da mostrare: non c'è più niente da raggiungere")
         assertFalse(custode.vivo, "la notifica non deve sopravvivere alla porta")
         assertFalse(raggiungibile(porta), "a porta chiusa la connessione va rifiutata")
 
         web.enable()
-        assertNotEquals(vecchio, web.status.value.tokenLettura, "un indirizzo copiato prima non deve valere")
+        try {
+            val porteAperte = web.status.value.port!!
+            assertEquals(
+                200,
+                codiceDi(chiedi(porteAperte, "/api/eventi", vecchio)),
+                "il segnalibro dato ieri deve funzionare ancora oggi"
+            )
+        } finally {
+            web.disable()
+        }
+    }
+
+    @Test
+    fun `revocare invece cambia le serrature, e subito`() {
+        val web = servizio()
+        web.enable()
+        try {
+            val vecchio = web.status.value.tokenLettura!!
+            val porta = web.status.value.port!!
+
+            web.revoke()
+
+            val nuovo = web.status.value.tokenLettura!!
+            assertNotEquals(vecchio, nuovo, "la schermata deve mostrare subito gli indirizzi buoni")
+            assertNotNull(web.status.value.validoFinoA)
+            assertEquals(401, codiceDi(chiedi(porta, "/api/eventi", vecchio)), "l'indirizzo di prima è morto")
+            assertEquals(200, codiceDi(chiedi(porta, "/api/eventi", nuovo)))
+            assertTrue(web.status.value.listening, "revocare non chiude la porta")
+        } finally {
+            web.disable()
+        }
+    }
+
+    @Test
+    fun `revocare funziona anche a interruttore spento`() {
+        // Chi spegne credendo di revocare deve trovare lì il gesto vero.
+        val web = servizio()
+        web.enable()
+        val vecchio = web.status.value.tokenLettura!!
         web.disable()
+
+        web.revoke()
+
+        web.enable()
+        try {
+            assertEquals(401, codiceDi(chiedi(web.status.value.port!!, "/api/eventi", vecchio)))
+        } finally {
+            web.disable()
+        }
+    }
+
+    @Test
+    fun `i token sopravvivono a un servizio nuovo sulla stessa cartella`() {
+        // Il caso vero: Android uccide il processo, l'app riparte, e il tablet in cucina deve
+        // continuare a mostrare la lista senza che nessuno tocchi niente.
+        val primo = servizio()
+        primo.enable()
+        val consegnato = primo.status.value.tokenLettura!!
+        primo.disable()
+
+        val dopoIlRiavvio = servizio()
+        dopoIlRiavvio.enable()
+        try {
+            assertEquals(
+                200,
+                codiceDi(chiedi(dopoIlRiavvio.status.value.port!!, "/api/eventi", consegnato))
+            )
+        } finally {
+            dopoIlRiavvio.disable()
+        }
     }
 
     @Test
@@ -302,13 +381,17 @@ class WebServiceTest {
 
         web.enable()
 
-        assertFalse(web.status.value.listening, "senza certificato non si apre nulla")
+        assertFalse(web.status.value.listening, "senza i segreti del server non si apre nulla")
         assertNull(web.status.value.urlLettura)
         val messaggio = web.status.value.lastMessage
         assertNotNull(messaggio)
         assertTrue(
-            "certificato" in messaggio,
-            "il messaggio deve nominare la causa vera, non la porta: $messaggio"
+            "la porta resta chiusa" in messaggio,
+            "il messaggio deve nominare la causa vera, non la porta occupata: $messaggio"
+        )
+        assertTrue(
+            "porta $0" !in messaggio,
+            "«impossibile aprire la porta» manderebbe a cercare dalla parte sbagliata: $messaggio"
         )
     }
 
@@ -327,16 +410,21 @@ class WebServiceTest {
             .apply { init(null, arrayOf(permissivo), java.security.SecureRandom()) }
     }
 
-    private fun chiedi(porta: Int, percorso: String): String {
+    private fun chiedi(porta: Int, percorso: String, token: String? = null): String {
         val socket = clienteCheScavalcaLAvviso().socketFactory
             .createSocket("127.0.0.1", porta) as javax.net.ssl.SSLSocket
+        val autorizzazione = token?.let { "Authorization: Bearer $it\r\n" } ?: ""
         return socket.use {
             it.soTimeout = 10_000
-            it.outputStream.write("GET $percorso HTTP/1.1\r\nHost: x\r\n\r\n".toByteArray())
+            it.outputStream.write("GET $percorso HTTP/1.1\r\nHost: x\r\n$autorizzazione\r\n".toByteArray())
             it.outputStream.flush()
             it.inputStream.readBytes().toString(Charsets.ISO_8859_1)
         }
     }
+
+    /** `HTTP/1.1 401 Unauthorized` → `401`. Serve a leggere gli assert senza tagliare stringhe. */
+    private fun codiceDi(risposta: String): Int =
+        risposta.substringAfter("HTTP/1.1 ").take(3).toIntOrNull() ?: -1
 
     @Test
     fun `un giro completo sopra TLS, dal token alla pagina`() {
@@ -349,17 +437,23 @@ class WebServiceTest {
         val token = stato.tokenLettura!!
 
         try {
-            val pagina = chiedi(porta, "/?t=$token")
+            // La pagina si apre **senza credenziali**: è il guscio che poi si autentica.
+            val pagina = chiedi(porta, "/")
             assertTrue(pagina.startsWith("HTTP/1.1 200 OK"), pagina.take(120))
             assertTrue("<!DOCTYPE html>" in pagina || "<html" in pagina, pagina.take(200))
 
-            val dati = chiedi(porta, "/api/eventi?t=$token")
+            val dati = chiedi(porta, "/api/eventi", token)
             assertTrue(dati.startsWith("HTTP/1.1 200 OK"), dati.take(120))
             assertTrue("application/json" in dati, dati.take(200))
 
-            // Il token continua a decidere chi entra: TLS cifra, non autorizza.
+            // Il token continua a decidere chi legge i dati: TLS cifra, non autorizza.
             val senzaToken = chiedi(porta, "/api/eventi")
-            assertTrue(senzaToken.startsWith("HTTP/1.1 403"), senzaToken.take(120))
+            assertTrue(senzaToken.startsWith("HTTP/1.1 401"), senzaToken.take(120))
+            // E non compare da nessuna parte nella riga di richiesta.
+            assertTrue(
+                "HTTP/1.1 401" in chiedi(porta, "/api/eventi?t=$token"),
+                "la query non autentica più"
+            )
         } finally {
             web.disable()
         }

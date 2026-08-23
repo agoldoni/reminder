@@ -3,8 +3,17 @@ package it.agoldoni.reminder.web
 /** Il percorso dei dati. Separato dagli asset perché è l'unico che tocca il database. */
 private const val PERCORSO_EVENTI = "/api/eventi"
 
-/** Nome del parametro che porta il token. Corto perché va digitato a mano. */
-private const val PARAMETRO_TOKEN = "t"
+/**
+ * Lo schema con cui la credenziale viaggia: `Authorization: Bearer <jwt>`.
+ *
+ * **Non è più un parametro di query**, e non c'è un periodo di grazia: `?t=` non autentica più.
+ * Due modi di presentare la stessa credenziale sono uno di troppo — e nessun client vivo si rompe,
+ * perché fino alla feature 005 i token morivano comunque a ogni riavvio del processo.
+ *
+ * Il confronto è **senza distinzione di maiuscole**, come vuole la RFC 7235: `bearer xyz` è lecito
+ * quanto `Bearer xyz`, e rifiutarlo sarebbe un difetto che si manifesta solo con certi client.
+ */
+private const val SCHEMA_BEARER = "bearer"
 
 /**
  * Il parametro che chiede di **restare in attesa** invece di rispondere subito.
@@ -69,7 +78,7 @@ internal class Router(
 ) {
 
     suspend fun gestisci(request: HttpRequest, provenienza: String): HttpResponse {
-        val accesso = token.verifica(request.query[PARAMETRO_TOKEN], provenienza)
+        val accesso = token.verifica(bearer(request), provenienza)
         return when (request.method) {
             "GET" -> get(request, accesso)
             "POST" -> post(request, accesso)
@@ -82,11 +91,13 @@ internal class Router(
 
     private suspend fun get(request: HttpRequest, accesso: Accesso): HttpResponse {
         if (request.path == PERCORSO_EVENTI) {
-            if (!accesso.puoLeggere) return negato()
+            // Su una lettura il rifiuto ha un significato solo — «non so chi sei» — perché
+            // entrambi i permessi leggono: quindi è sempre un `401`, mai un `403`.
+            if (!accesso.puoLeggere) return nonAutenticato()
             return eventi(request, accesso)
         }
         val asset = StaticAssets.asset(request.path) ?: return HttpResponse.vuota(404)
-        if (asset.tokenRichiesto && !accesso.puoLeggere) return negato()
+        if (asset.tokenRichiesto && !accesso.puoLeggere) return nonAutenticato()
         val contenuto = StaticAssets.contenuto(asset)
             // Dichiarato nell'elenco ma assente dall'artefatto: è un difetto di confezionamento,
             // non una richiesta sbagliata, e dirlo `404` manderebbe a cercare dalla parte opposta.
@@ -171,7 +182,13 @@ internal class Router(
         accesso: Accesso,
         azione: suspend () -> EsitoScrittura
     ): HttpResponse {
-        if (!accesso.puoScrivere) return negato()
+        // **Qui i due rifiuti si separano**, ed è l'unico posto in cui succede. Chi non è
+        // autenticato riceve `401`; chi lo è ma ha in mano l'indirizzo di sola lettura riceve
+        // `403`. Il `403` non regala niente a chi sonda: lo vede solo chi ha già un token valido,
+        // e gli dice una cosa che sa già.
+        if (!accesso.puoScrivere) {
+            return if (accesso.autenticato) soloLettura() else nonAutenticato()
+        }
         if (!tipoAmmesso(request)) return HttpResponse.vuota(415)
 
         return when (val esito = azione()) {
@@ -238,12 +255,33 @@ internal class Router(
     }
 
     /**
-     * Una risposta sola per «token assente», «token sbagliato», «hai tentato troppe volte» e
-     * «questo è l'indirizzo di sola lettura». Distinguerle non servirebbe all'utente e servirebbe
-     * a chi sonda: saprebbe quando ha indovinato la forma giusta e quando è stato messo in pausa.
-     *
-     * La pagina distingue lo stesso i due casi che le servono, ma dal **suo** lato: sa che cosa
-     * stava facendo quando ha ricevuto il rifiuto.
+     * La credenziale, dall'header. `null` se manca, se lo schema è un altro o se non c'è niente
+     * dopo lo schema: al verificatore arriva sempre «un token o niente», mai un mezzo header.
      */
-    private fun negato() = HttpResponse.vuota(403)
+    private fun bearer(request: HttpRequest): String? {
+        val pezzi = request.header("authorization")?.split(' ', limit = 2) ?: return null
+        if (pezzi.size != 2 || !pezzi[0].equals(SCHEMA_BEARER, ignoreCase = true)) return null
+        return pezzi[1].trim().takeIf { it.isNotEmpty() }
+    }
+
+    /**
+     * «Non so chi sei»: credenziale assente, malformata, con la firma sbagliata, scaduta — oppure
+     * respinta perché si è tentato troppe volte.
+     *
+     * **Le quattro condizioni restano indistinguibili sul filo**, ed è la regola della 002:
+     * separarle non servirebbe all'utente e servirebbe a chi sonda, che saprebbe quando ha
+     * indovinato la forma giusta e quando è stato messo in pausa.
+     *
+     * Niente `WWW-Authenticate`: non serve a un client nostro e allarga la superficie.
+     */
+    private fun nonAutenticato() = HttpResponse.vuota(401)
+
+    /**
+     * «So chi sei, e questo indirizzo permette solo di guardare.»
+     *
+     * È un codice diverso da [nonAutenticato] perché **il client deve poterli distinguere**: un
+     * token respinto qui è un token buono, e buttarlo via — come è giusto fare con un `401` —
+     * toglierebbe l'accesso a chi ha semplicemente toccato un pulsante che non doveva esserci.
+     */
+    private fun soloLettura() = HttpResponse.vuota(403)
 }

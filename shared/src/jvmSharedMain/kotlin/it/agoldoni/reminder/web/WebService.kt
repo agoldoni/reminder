@@ -19,10 +19,14 @@ import kotlinx.coroutines.flow.asStateFlow
  *
  * **Vive quanto il processo, non quanto una schermata.** È costruito dall'`Application`, e finché
  * l'interruttore è acceso la porta resta aperta anche ad app chiusa: a tenere vivo il processo ci
- * pensa il [ProcessKeeper]. Se socket e token fossero legati a una schermata o a una Activity, una
- * rotazione dello schermo — che è un giro completo di `onStop`/`onStart` — rigenererebbe il token,
- * e l'indirizzo già digitato sull'altro dispositivo smetterebbe di funzionare senza che l'utente
- * abbia toccato niente.
+ * pensa il [ProcessKeeper]. Legarlo a una Activity vorrebbe dire aprire e chiudere il socket a
+ * ogni rotazione dello schermo — che è un giro completo di `onStop`/`onStart` — e lasciare la
+ * pagina senza risposta ogni volta che qualcuno gira il telefono in mano.
+ *
+ * Fino alla feature 005 la ragione era un'altra e più grave: una rotazione **rigenerava il token**,
+ * e l'indirizzo appena digitato sull'altro dispositivo smetteva di funzionare senza che l'utente
+ * avesse toccato niente. Adesso i token si coniano da una chiave che sta su disco ([ChiaveFirma]) e
+ * coniarne di nuovi non invalida quelli consegnati: quel difetto non c'è più, ed è la feature 006.
  */
 class WebService(
     dao: EventDao,
@@ -60,7 +64,14 @@ class WebService(
     private val keeper: ProcessKeeper = ProcessKeeper { }
 ) : WebServerController {
 
-    private val token = AccessToken(now)
+    /**
+     * La chiave con cui si firmano i token, **nella stessa cartella del certificato**: sono due
+     * segreti dello stesso server, protetti dalla stessa cosa — i permessi del file — e un secondo
+     * posto sarebbe un secondo posto da ricordarsi di cancellare.
+     */
+    private val chiaviFirma = ChiaveFirma(cartellaCertificato)
+
+    private val token = AccessToken(chiaviFirma, now)
 
     private val segnale = Cambiamenti(cambiamenti, scope)
 
@@ -98,9 +109,9 @@ class WebService(
 
     override fun enable() {
         settings.setWebEnabled(true)
-        // Token nuovo a ogni accensione: è questo a rendere accettabile che viaggi nell'URL,
-        // perché un indirizzo copiato la volta scorsa smette di funzionare.
-        token.rigenera()
+        // Nessun segreto da rigenerare: i token li conia `apri()` dalla chiave che sta su disco, e
+        // quelli consegnati la volta scorsa continuano a valere. È il rovescio dell'indirizzo
+        // fisso, ed è la ragione per cui esiste `revoke()`.
         _status.value = _status.value.copy(enabled = true, lastMessage = null)
         apri()
         if (_status.value.listening) ingaggiaCustode()
@@ -112,12 +123,60 @@ class WebService(
         // una notifica che dichiara aperta una porta già chiusa.
         runCatching { keeper.keepAlive(false) }
         chiudi()
-        // Spegnere non è mettere in pausa: il token va invalidato, non conservato.
-        token.invalida()
+        // **Spegnere non revoca.** L'interruttore chiude la porta; le serrature si cambiano con
+        // `revoke()`, che è un gesto diverso e visibile. Gli indirizzi spariscono dallo stato
+        // perché non c'è più niente da raggiungere, non perché abbiano smesso di valere.
         _status.value = _status.value.copy(
             enabled = false,
             tokenLettura = null,
             tokenScrittura = null,
+            validoFinoA = null,
+            lastMessage = null
+        )
+    }
+
+    /**
+     * La revoca: chiave nuova, e ogni indirizzo consegnato finora smette di funzionare.
+     *
+     * **Si conia subito la coppia nuova** se la porta è aperta, così la schermata mostra già gli
+     * indirizzi buoni: costringere l'utente a spegnere e riaccendere dopo una revoca vorrebbe dire
+     * fargli chiudere la porta per riaprirla, cioè il gesto che la revoca esiste per evitare.
+     *
+     * Funziona anche a interruttore spento: toglie l'accesso per quando la porta si riaprirà.
+     */
+    override fun revoke() {
+        runCatching { token.revoca() }.onFailure { errore ->
+            _status.value = _status.value.copy(
+                lastMessage = errore.message
+                    ?: "Non si riesce a sostituire la chiave d'accesso: gli indirizzi consegnati " +
+                    "restano validi."
+            )
+            return
+        }
+
+        if (!_status.value.listening) {
+            _status.value = _status.value.copy(
+                tokenLettura = null,
+                tokenScrittura = null,
+                validoFinoA = null,
+                lastMessage = null
+            )
+            return
+        }
+
+        val coppia = runCatching { token.coniaCoppia() }.getOrElse { errore ->
+            // La chiave è già cambiata, quindi i vecchi indirizzi sono morti comunque. Qui si è
+            // solo senza indirizzi nuovi da mostrare, e dirlo è meglio che mostrarne di finti.
+            guasto(
+                errore.message
+                    ?: "Chiave d'accesso sostituita, ma non si riesce a coniare i nuovi indirizzi."
+            )
+            return
+        }
+        _status.value = _status.value.copy(
+            tokenLettura = coppia.lettura,
+            tokenScrittura = coppia.scrittura,
+            validoFinoA = coppia.scadenzaMillis,
             lastMessage = null
         )
     }
@@ -148,21 +207,26 @@ class WebService(
 
     private fun apri() {
         if (_status.value.listening) return
-        // Al primo avvio del processo con l'interruttore già acceso non c'è ancora un token.
-        if (token.coppia == null) token.rigenera()
 
-        // Il certificato si prepara **prima** e a parte, per poterne riportare il guasto con il
-        // suo nome: infilarlo nello stesso `runCatching` dell'apertura direbbe all'utente che la
-        // porta è occupata mentre il problema è il disco.
+        // **La chiave d'accesso viene prima di tutto il resto**, e un suo guasto chiude la
+        // faccenda qui: una porta aperta senza indirizzi da mostrare è una porta che nessuno può
+        // usare, e una chiave tenuta solo in memoria sarebbe peggio ancora — sembrerebbe
+        // funzionare e morirebbe al riavvio, cioè il difetto che questa feature toglie.
+        // Il messaggio arriva intero da `ChiaveFirma`, che sa quale dei due casi è capitato.
+        val coppia = runCatching { token.coniaCoppia() }.getOrElse { errore ->
+            guasto(
+                errore.message
+                    ?: "Impossibile preparare la chiave d'accesso: la porta resta chiusa."
+            )
+            return
+        }
+
+        // Il certificato si prepara **a parte**, per poterne riportare il guasto con il suo nome:
+        // infilarlo nello stesso `runCatching` dell'apertura direbbe all'utente che la porta è
+        // occupata mentre il problema è il disco.
         val identita = runCatching { identita() }.getOrElse { errore ->
-            _status.value = _status.value.copy(
-                listening = false,
-                port = null,
-                host = null,
-                tokenLettura = null,
-                tokenScrittura = null,
-                impronta = null,
-                lastMessage = "Impossibile preparare il certificato del server: " +
+            guasto(
+                "Impossibile preparare il certificato del server: " +
                     "${errore.message ?: "errore sconosciuto"}."
             )
             return
@@ -176,24 +240,30 @@ class WebService(
                     // mostrare quella richiesta manderebbe chi digita contro un muro.
                     port = portaEffettiva,
                     host = indirizzoLocale(),
-                    tokenLettura = token.coppia?.lettura,
-                    tokenScrittura = token.coppia?.scrittura,
+                    tokenLettura = coppia.lettura,
+                    tokenScrittura = coppia.scrittura,
+                    validoFinoA = coppia.scadenzaMillis,
                     impronta = identita.impronta,
                     lastMessage = null
                 )
             }
             .onFailure { errore ->
-                _status.value = _status.value.copy(
-                    listening = false,
-                    port = null,
-                    host = null,
-                    tokenLettura = null,
-                    tokenScrittura = null,
-                    impronta = null,
-                    lastMessage = "Impossibile aprire la porta $port: " +
-                        "${errore.message ?: "porta occupata"}."
-                )
+                guasto("Impossibile aprire la porta $port: ${errore.message ?: "porta occupata"}.")
             }
+    }
+
+    /** Porta chiusa e niente da mostrare, con la ragione già in italiano. */
+    private fun guasto(messaggio: String) {
+        _status.value = _status.value.copy(
+            listening = false,
+            port = null,
+            host = null,
+            tokenLettura = null,
+            tokenScrittura = null,
+            validoFinoA = null,
+            impronta = null,
+            lastMessage = messaggio
+        )
     }
 
     private fun chiudi() {

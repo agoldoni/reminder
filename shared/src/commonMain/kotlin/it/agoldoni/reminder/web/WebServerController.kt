@@ -31,10 +31,24 @@ data class WebStatus(
     val port: Int? = null,
     /**
      * Il token che apre la pagina **in sola lettura**: è quello che si può dare a qualcun altro.
+     *
+     * Dalla feature 006 è un JWT firmato e non più otto caratteri, e la differenza che conta non è
+     * la lunghezza: **non muore quando l'app si riavvia**. Quello che si vede qui è un buono di
+     * consegna fresco, coniato all'apertura della porta; i token consegnati prima restano buoni
+     * fino alla loro scadenza, e a farli cadere tutti c'è un gesto apposta.
      */
     val tokenLettura: String? = null,
     /** Il token che permette anche di modificare. Da tenere per sé. */
     val tokenScrittura: String? = null,
+    /**
+     * Fino a quando valgono i due indirizzi qui sopra. **Uno solo per entrambi**: si coniano nello
+     * stesso istante e con la stessa durata, e due campi suggerirebbero una differenza che non c'è.
+     *
+     * Serve a poterlo **dire**. Senza, l'unica alternativa sarebbe scrivere «trenta giorni» in un
+     * testo e lasciare all'utente la sottrazione — che farebbe male, e proprio nel momento in cui
+     * gli servirebbe sapere se l'indirizzo che sta per dare a qualcuno durerà.
+     */
+    val validoFinoA: Long? = null,
     /**
      * Impronta SHA-256 del certificato che il server presenta, nella forma in cui la mostrano i
      * browser. Esiste perché un essere umano la confronti: il certificato è autofirmato, il
@@ -50,22 +64,26 @@ data class WebStatus(
      * L'indirizzo che apre la pagina **in sola lettura**: guarda, non tocca. È quello che si può
      * dare a un'altra persona, ed è quello che la schermata mostra per primo.
      *
-     * **`https` e non `http`**: la porta non parla più in chiaro. Tenerle aperte tutte e due
-     * avrebbe conservato la debolezza che questa scelta esiste per chiudere — chi ascolta
-     * aspetterebbe la prima richiesta non cifrata. Il prezzo è che un segnalibro salvato con la
-     * versione precedente smette di funzionare, e non in modo comprensibile: un client in chiaro
-     * contro una porta TLS riceve spazzatura, non un errore. L'indirizzo giusto è sempre qui.
+     * **`https` e non `http`**: la porta non parla più in chiaro (feature 003).
+     *
+     * **Il token sta nel frammento** (`#access=`) e non più nella query, e non è un dettaglio di
+     * forma: il frammento **non viene mai spedito al server**. Non finisce in nessun log, non entra
+     * nell'header `Referer`, non compare in nessuna riga di richiesta. La pagina lo legge, se lo
+     * conserva e ripulisce la barra dell'indirizzo — ed è da lì in poi che l'indirizzo diventa
+     * fisso, cioè qualcosa che si può mettere fra i segnalibri.
      */
     val urlLettura: String? get() = indirizzo(tokenLettura)
 
     /**
      * L'indirizzo che permette anche di modificare. Da tenere per sé.
      *
-     * Nella schermata sta dietro un tocco in più, e non è cortesia: i due indirizzi differiscono
-     * solo negli otto caratteri finali, quindi affiancati sono indistinguibili a colpo d'occhio —
-     * e i due errori possibili non pesano uguale. Copiare questo credendo di copiare l'altro
-     * regala il telecomando e non dà nessun segnale; l'errore opposto si scopre in tre secondi,
-     * perché la pagina non ha i comandi.
+     * Nella schermata sta dietro un tocco in più, e non è cortesia: i due errori possibili non
+     * pesano uguale. Copiare questo credendo di copiare l'altro regala il telecomando e non dà
+     * nessun segnale; l'errore opposto si scopre in tre secondi, perché la pagina non ha i comandi.
+     *
+     * Con i JWT i due indirizzi differiscono per **tutta** la coda invece che per otto caratteri
+     * finali, quindi lo scambio è meno probabile di prima — ma sono anche entrambi lunghi ~180
+     * caratteri, cioè illeggibili a colpo d'occhio allo stesso modo. Il tocco in più resta.
      */
     val urlScrittura: String? get() = indirizzo(tokenScrittura)
 
@@ -75,7 +93,7 @@ data class WebStatus(
      */
     private fun indirizzo(token: String?): String? =
         if (listening && host != null && port != null && token != null) {
-            "https://$host:$port/?t=$token"
+            "https://$host:$port/#access=$token"
         } else {
             null
         }
@@ -100,8 +118,24 @@ interface WebServerController {
     /** Accende l'interruttore, apre il socket e chiede al custode di tenere vivo il processo. */
     fun enable()
 
-    /** Spegne l'interruttore, chiude il socket, **invalida il token** e congeda il custode. */
+    /**
+     * Spegne l'interruttore, chiude il socket e congeda il custode.
+     *
+     * **Non invalida più niente**, ed è il rovescio dell'indirizzo fisso: l'interruttore chiude la
+     * porta, non cambia le serrature. Chi vuole togliere un accesso già dato usa [revoke], che è un
+     * gesto diverso e va detto all'utente — altrimenti continuerà a credere che spegnere basti.
+     */
     fun disable()
+
+    /**
+     * Butta via la chiave di firma e ne fa una nuova: **ogni indirizzo consegnato finora smette di
+     * funzionare**, e vanno riconsegnati tutti.
+     *
+     * È l'unica revoca che esiste, e cade tutta insieme: non c'è una lista di token emessi da cui
+     * togliere una riga. Funziona anche a interruttore spento — toglie l'accesso per quando la
+     * porta si riaprirà — perché chi spegne credendo di revocare deve trovare lì il gesto vero.
+     */
+    fun revoke()
 
     /**
      * Riapre se l'interruttore è acceso. Da chiamare quando l'app arriva in primo piano: è
@@ -136,5 +170,6 @@ object WebServerNonDisponibile : WebServerController {
     override val supported: Boolean = false
     override fun enable() = Unit
     override fun disable() = Unit
+    override fun revoke() = Unit
     override fun resume() = Unit
 }

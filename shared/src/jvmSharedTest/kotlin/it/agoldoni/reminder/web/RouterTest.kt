@@ -3,7 +3,9 @@ package it.agoldoni.reminder.web
 import it.agoldoni.reminder.data.EventEntity
 import it.agoldoni.reminder.data.FakeEventDao
 import it.agoldoni.reminder.sync.RecordingAlarmScheduler
+import java.io.File
 import kotlinx.coroutines.runBlocking
+import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -21,12 +23,17 @@ private fun richiesta(
     token: String? = null,
     ifNoneMatch: String? = null,
     corpo: String = "",
-    contentType: String? = if (corpo.isEmpty()) null else JSON
+    contentType: String? = if (corpo.isEmpty()) null else JSON,
+    /** Lo schema, per poter provare che il confronto è senza distinzione di maiuscole. */
+    schema: String = "Bearer"
 ) = HttpRequest(
     method = metodo,
     path = percorso,
-    query = token?.let { mapOf("t" to it) } ?: emptyMap(),
+    // **Query vuota, sempre.** Dalla feature 006 la credenziale non passa più di qui: i casi che
+    // lo verificano costruiscono la query a mano.
+    query = emptyMap(),
     headers = buildMap {
+        token?.let { put("authorization", "$schema $it") }
         ifNoneMatch?.let { put("if-none-match", it) }
         contentType?.let { put("content-type", it) }
     },
@@ -36,9 +43,20 @@ private fun richiesta(
 /** TC-05/06/07/09/13/14/15/16 — smistamento, controllo d'accesso, richieste condizionali, scritture. */
 class RouterTest {
 
+    private val cartella = File.createTempFile("promemoria-router", "").let {
+        it.delete()
+        File(it.absolutePath)
+    }
+
+    @AfterTest
+    fun pulisci() {
+        cartella.listFiles()?.forEach { it.delete() }
+        cartella.delete()
+    }
+
     private val dao = FakeEventDao()
     private val alarms = RecordingAlarmScheduler()
-    private val token = AccessToken()
+    private val token = AccessToken(ChiaveFirma(cartella))
     private var orologio = 5_000L
 
     private val router = Router(
@@ -47,7 +65,7 @@ class RouterTest {
         dao = dao
     )
 
-    private val buoni = token.rigenera()
+    private val buoni = token.coniaCoppia()
     private val lettura get() = buoni.lettura
     private val scrittura get() = buoni.scrittura
 
@@ -75,8 +93,9 @@ class RouterTest {
     private fun crea(
         corpo: String = """{"titolo":"Spesa","dateTimeMillis":9000000,"advanceMinutes":15}""",
         t: String? = scrittura,
-        contentType: String? = JSON
-    ) = invia("/api/eventi", "POST", corpo, t, contentType)
+        contentType: String? = JSON,
+        chi: String = CHI
+    ) = invia("/api/eventi", "POST", corpo, t, contentType, chi)
 
     private fun modifica(
         id: Long,
@@ -166,9 +185,12 @@ class RouterTest {
     // --- Controllo d'accesso -------------------------------------------------------------------
 
     @Test
-    fun `senza token la pagina e i dati sono negati`() {
-        assertEquals(403, get("/", t = null).status)
-        assertEquals(403, get("/api/eventi", t = null).status)
+    fun `la pagina si apre senza credenziali, i dati no`() {
+        // **È il vincolo da cui nasce l'indirizzo fisso.** Il browser non può mandare un header
+        // prima di aver caricato il JavaScript, quindi `/` dev'essere il guscio che poi si
+        // autentica. Dentro non c'è nessun promemoria: il controllo resta dove stanno i dati.
+        assertEquals(200, get("/", t = null).status)
+        assertEquals(401, get("/api/eventi", t = null).status)
     }
 
     @Test
@@ -176,8 +198,49 @@ class RouterTest {
         val senza = get("/api/eventi", t = null, chi = "10.0.0.1")
         val sbagliato = get("/api/eventi", t = "sbagliato", chi = "10.0.0.2")
         assertEquals(senza, sbagliato, "distinguerli direbbe a chi sonda quando ha la forma giusta")
-        assertEquals(403, senza.status)
+        assertEquals(401, senza.status)
         assertTrue(senza.body.isEmpty())
+    }
+
+    @Test
+    fun `anche un token scaduto e uno bloccato danno la stessa risposta`() {
+        // Le quattro condizioni di «non so chi sei» restano indistinguibili sul filo.
+        val scaduto = AccessToken(ChiaveFirma(cartella), now = { 0L }, durataMillis = 1)
+            .coniaCoppia().lettura
+        assertEquals(get("/api/eventi", t = null, chi = "10.0.0.3"), get("/api/eventi", t = scaduto, chi = "10.0.0.4"))
+    }
+
+    @Test
+    fun `la query non autentica piu'`() {
+        val conQuery = runBlocking {
+            router.gestisci(
+                richiesta("/api/eventi").copy(query = mapOf("t" to lettura)),
+                CHI
+            )
+        }
+        assertEquals(401, conQuery.status, "il token nell'URL era il difetto, non l'interfaccia")
+    }
+
+    @Test
+    fun `lo schema Bearer non distingue maiuscole e minuscole`() {
+        // RFC 7235. Rifiutarlo sarebbe un difetto che salta fuori solo con certi client.
+        for (schema in listOf("Bearer", "bearer", "BEARER", "BeArEr")) {
+            assertEquals(200, runBlocking {
+                router.gestisci(richiesta("/api/eventi", token = lettura, schema = schema), CHI)
+            }.status, "lo schema <$schema> doveva essere accettato")
+        }
+    }
+
+    @Test
+    fun `un header di autorizzazione storto non autentica`() {
+        for (header in listOf("Bearer", "Bearer ", "Basic $lettura", "$lettura", "Bearer  ")) {
+            val storta = HttpRequest("GET", "/api/eventi", emptyMap(), mapOf("authorization" to header))
+            assertEquals(
+                401,
+                runBlocking { router.gestisci(storta, CHI) }.status,
+                "l'header <$header> non doveva autenticare"
+            )
+        }
     }
 
     @Test
@@ -191,9 +254,9 @@ class RouterTest {
     }
 
     @Test
-    fun `superata la soglia risponde 403 anche al token giusto`() {
+    fun `superata la soglia risponde 401 anche al token giusto`() {
         repeat(10) { get("/api/eventi", t = "sbagliato", chi = "10.0.0.9") }
-        assertEquals(403, get("/api/eventi", chi = "10.0.0.9").status)
+        assertEquals(401, get("/api/eventi", chi = "10.0.0.9").status)
         // E l'utente da un altro indirizzo continua a passare.
         assertEquals(200, get("/api/eventi", chi = "10.0.0.1").status)
     }
@@ -221,10 +284,20 @@ class RouterTest {
     }
 
     @Test
-    fun `una scrittura senza token e' negata come le altre`() {
-        assertEquals(403, crea(t = null).status)
-        assertEquals(403, crea(t = "sbagliato").status)
+    fun `una scrittura senza token e' negata, ma con un codice diverso`() {
+        // **La distinzione che il client usa per decidere se buttare via il token che ha.** Un
+        // `403` su una scrittura vuol dire «hai l'indirizzo di sola lettura», e quel token è
+        // buono; un `401` vuol dire «non so chi sei», e allora va cancellato.
+        assertEquals(401, crea(t = null).status)
+        assertEquals(401, crea(t = "sbagliato").status)
         assertTrue(dao.events.isEmpty())
+    }
+
+    @Test
+    fun `un 403 su una scrittura non consuma i tentativi`() {
+        // Chi apre l'indirizzo di sola lettura e tocca un pulsante è l'utente, non un attaccante.
+        repeat(20) { assertEquals(403, crea(t = lettura, chi = "10.0.0.7").status) }
+        assertEquals(200, get("/api/eventi", t = lettura, chi = "10.0.0.7").status)
     }
 
     // --- Si scrive anche ad app chiusa ---------------------------------------------------------

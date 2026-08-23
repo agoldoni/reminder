@@ -3,11 +3,13 @@ package it.agoldoni.reminder.web
 import it.agoldoni.reminder.data.EventEntity
 import it.agoldoni.reminder.data.FakeEventDao
 import it.agoldoni.reminder.sync.RecordingAlarmScheduler
+import java.io.File
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -25,10 +27,21 @@ private const val CHI = "192.168.1.7"
  */
 class AttesaLungaTest {
 
+    private val cartella = File.createTempFile("promemoria-attesa", "").let {
+        it.delete()
+        File(it.absolutePath)
+    }
+
+    @AfterTest
+    fun pulisci() {
+        cartella.listFiles()?.forEach { it.delete() }
+        cartella.delete()
+    }
+
     private val dao = FakeEventDao()
     private val alarms = RecordingAlarmScheduler()
-    private val token = AccessToken()
-    private val buoni = token.rigenera()
+    private val token = AccessToken(ChiaveFirma(cartella))
+    private val buoni = token.coniaCoppia()
 
     private fun TestScope.impianto(
         attesaMillis: Long = 25_000L,
@@ -49,11 +62,11 @@ class AttesaLungaTest {
     ) = HttpRequest(
         method = "GET",
         path = "/api/eventi",
-        query = buildMap {
-            put("t", t)
-            if (attendi) put("attendi", "1")
-        },
-        headers = buildMap { ifNoneMatch?.let { put("if-none-match", it) } }
+        query = buildMap { if (attendi) put("attendi", "1") },
+        headers = buildMap {
+            put("authorization", "Bearer $t")
+            ifNoneMatch?.let { put("if-none-match", it) }
+        }
     )
 
     private fun evento(titolo: String, quando: Long = 9_000L, completato: Boolean = false) =
