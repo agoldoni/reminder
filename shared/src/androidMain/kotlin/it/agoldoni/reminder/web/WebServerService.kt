@@ -26,10 +26,20 @@ import it.agoldoni.reminder.shared.R
  * porta è aperta su questo dispositivo, in linea con l'interruttore spento di default. Per la
  * stessa ragione porta un'azione per spegnere senza dover aprire l'app.
  *
- * **`START_NOT_STICKY` di proposito.** Se il sistema uccide il processo, il servizio non deve
- * tornare da solo: il token vive in memoria e ricomincerebbe diverso, quindi la notifica
- * dichiarerebbe raggiungibile un indirizzo che nessuno conosce. Si riparte quando l'utente riapre
- * l'app, che è anche il solo posto dove può leggere il nuovo indirizzo.
+ * **`START_NOT_STICKY` di proposito, e dalla feature 006 per una ragione diversa da prima.**
+ *
+ * La ragione vecchia era che il token viveva in memoria e sarebbe ricominciato diverso, quindi la
+ * notifica avrebbe dichiarato raggiungibile un indirizzo che nessuno conosceva. **Non è più vera**:
+ * i token si firmano con una chiave su disco e sopravvivono al processo.
+ *
+ * La scelta resta però giusta per un'altra ragione, e va conosciuta perché è meno ovvia: se il
+ * sistema riavviasse il servizio da solo, **nessuno aprirebbe il socket**. La porta la apre
+ * `WebService.resume()`, che parte da `MainActivity.onStart()`, e qui non c'è nessuna Activity.
+ * Tornerebbe la notifica e non il servizio che dichiara.
+ *
+ * Renderlo `START_STICKY` è adesso possibile — e desiderabile, perché il tablet in cucina
+ * sopravvivrebbe a un processo ucciso per memoria — ma vuole che sia questo servizio ad aprire la
+ * porta invece dell'Activity. È un cambiamento a sé, non un aggiustamento.
  */
 class WebServerService : Service() {
 

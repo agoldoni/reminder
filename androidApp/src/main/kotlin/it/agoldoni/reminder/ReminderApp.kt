@@ -33,8 +33,14 @@ class ReminderApp : Application() {
 
     /**
      * Costruito qui e non in `MainActivity` di proposito: vive quanto il processo. Legato
-     * all'Activity, ogni rotazione dello schermo rigenererebbe il token e l'indirizzo già digitato
-     * sull'altro dispositivo smetterebbe di funzionare.
+     * all'Activity, ogni rotazione dello schermo — che è un giro completo di `onStop`/`onStart` —
+     * chiuderebbe e riaprirebbe il socket, e la pagina resterebbe senza risposta ogni volta che
+     * qualcuno gira il telefono in mano.
+     *
+     * Fino alla feature 005 la ragione era peggiore: una rotazione **rigenerava il token**, e
+     * l'indirizzo appena digitato sull'altro dispositivo smetteva di funzionare. Dalla 006 i token
+     * si firmano con una chiave che sta in `filesDir/web-tls/`, quindi sopravvivono al processo:
+     * quel difetto non c'è più.
      */
     lateinit var webService: WebService
         private set
