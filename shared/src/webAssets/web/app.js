@@ -352,11 +352,23 @@ function annullaCompletamento() {
 function mostraAnnulla(titolo) {
   testoAnnulla.textContent = '«' + titolo + '» segnato come fatto.';
   barraAnnulla.hidden = false;
+  spazioPerLaBarra();
+}
+
+/*
+  L'elenco cede spazio alla barra ancorata, che altrimenti coprirebbe l'ultima scheda proprio
+  mentre la si guarda. Si misura invece di indovinare: il testo va a capo su schermi stretti e
+  l'altezza non è una costante.
+*/
+function spazioPerLaBarra() {
+  document.body.style.paddingBottom =
+    barraAnnulla.hidden ? '' : (barraAnnulla.offsetHeight + 32) + 'px';
 }
 
 function nascondiAnnulla() {
   daAnnullare = null;
   barraAnnulla.hidden = true;
+  spazioPerLaBarra();
 }
 
 /*

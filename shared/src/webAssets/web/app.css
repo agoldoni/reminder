@@ -44,6 +44,21 @@
 
 * { box-sizing: border-box; }
 
+/*
+  **`hidden` deve vincere su qualunque `display` di questo foglio, e serve dirlo.**
+
+  L'attributo `hidden` nasconde gli elementi solo perché la stylesheet del browser gli assegna
+  `display: none`, e **qualunque** regola scritta qui dentro la scavalca — anche una innocua come
+  `display: flex` su un contenitore. Questa pagina si regge su `hidden` per quattro elementi
+  (l'avviso, il messaggio dell'app chiusa, «nessun evento» e la barra dell'annullamento): senza
+  questa riga, basta dare un `display` a uno di essi perché resti visibile e vuoto.
+
+  È già successo: la barra dell'annullamento, che ha `display: flex`, compariva vuota su ogni
+  pagina. Non si notava solo perché stava in fondo al documento, fuori schermo — e si è vista
+  appena è diventata fissa nella finestra.
+*/
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   background: var(--sfondo);
@@ -96,16 +111,37 @@ main { padding: 16px; display: flex; flex-direction: column; gap: 8px; }
   font-size: 0.9rem;
 }
 
+/*
+  **Ancorata in fondo alla finestra, non in fondo al documento.**
+  Messa nel flusso della pagina finiva sotto l'elenco, cioè fuori schermo: chi aveva appena toccato
+  «Fatto» stava guardando il punto dove la riga era sparita, e l'unico modo di disfare l'azione era
+  scorrere fino in fondo per scoprire che c'era. Un annullamento che non si vede non è un
+  annullamento. È la stessa forma dello snackbar dell'app, ed è la stessa ragione.
+*/
 #annulla-barra {
-  margin: 0 auto 16px;
-  padding: 0 16px;
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: 16px;
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 12px 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   font-size: 0.9rem;
-  color: var(--tenue);
+  background: var(--barra);
+  color: var(--barra-testo);
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.3);
+  /* Sopra le schede, sotto il modulo: un dialogo aperto non deve averla davanti. */
+  z-index: 2;
 }
+
+/* Il testo cede spazio al pulsante, che non deve mai andare a capo. */
+#annulla-testo { overflow-wrap: anywhere; }
+#annulla-barra .azione { flex: none; }
 
 /*
   I comandi. Bersagli da 44px di lato: è un telefono anche questo, non solo il dispositivo che
