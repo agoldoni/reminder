@@ -34,28 +34,16 @@ class MainActivity : ComponentActivity() {
      * spenta o non c'è nessun dispositivo associato, `syncNow()` non fa nulla.
      *
      * Qui la web app riapre la sua porta, se l'interruttore è acceso e il processo è stato
-     * ricreato. Questo è anche l'unico momento in cui il servizio in primo piano si può avviare:
-     * dall'API 31 il sistema rifiuta di farlo partire da un'app che non è davanti.
+     * ricreato. **Non c'è un `onStop` corrispondente**: la porta resta aperta ad app chiusa, ed è
+     * il servizio in primo piano a tenere vivo il processo — e da lì si continua anche a
+     * **scrivere**, cosa verificata sul dispositivo con l'Activity distrutta. Questo è anche
+     * l'unico momento in cui quel servizio si può avviare: dall'API 31 il sistema rifiuta di farlo
+     * partire da un'app che non è davanti.
      */
     override fun onStart() {
         super.onStart()
         lifecycleScope.launch { appContainer.sync.syncNow() }
         appContainer.web.resume()
-    }
-
-    /**
-     * **C'è un `onStop`, e non chiude la porta.** La porta resta aperta ad app chiusa — è il
-     * servizio in primo piano a tenere vivo il processo — e continua a servire la pagina in sola
-     * lettura. Quello che si spegne qui è solo la **scrittura** dal browser, che funziona mentre
-     * l'utente è davanti e non mentre il telefono è in tasca.
-     *
-     * Chiudere il socket da qui, invece di abbassare una bandiera, disferebbe la feature 002: la
-     * rotazione dello schermo è un giro completo di `onStop`/`onStart`, e la pagina morirebbe a
-     * ogni rotazione.
-     */
-    override fun onStop() {
-        super.onStop()
-        appContainer.web.pause()
     }
 
     /** Il permesso serve a tutta l'app, non alla sola schermata di modifica: si chiede all'avvio. */

@@ -614,6 +614,6 @@ quindi le firme che M2 usa.
 |---|---|
 | **D-01** | ✅ Confermata: annullare la completazione appena fatta, nessuna vista dei completati |
 | **D-02** | ✅ Confermata: `POST /api/eventi` + `PUT /api/eventi/{id}` con `completato` fra i campi |
-| **D-08** | ✅ **Chiusa in fase 3**: la scrittura richiede l'app aperta (Activity visibile). Fa decadere V-D e aggiunge un `onStop` a `MainActivity` — vedi §A.4 e §C.6-bis |
+| **D-08** | ⛔ **Revocata il 23/08/2026.** V-D è stata eseguita e **passata**: ad app chiusa si scrive, sveglie comprese. Niente `onStop`, niente bandiera, niente `503` — vedi fase 3 §11 |
 | **D-03** | ✅ **Chiusa da §C.8**, e **al contrario** della proposta di fase 1: sola lettura visibile, indirizzo completo dietro una riga a scomparsa. Decisa sull'asimmetria degli errori, non sulla frequenza d'uso |
 | **D-04** | ✅ **Chiusa da §B.5**, con i limiti ricavati dal codice. Restano tre numeri *nuovi* che nessuna riga imponeva e che vanno approvati: **200** caratteri di titolo, **2000** di descrizione, **1970–2100** come intervallo delle date |

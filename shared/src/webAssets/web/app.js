@@ -29,9 +29,8 @@ var primaRisposta = false;
 var inCorso = false;
 var timerRete = null;
 
-/* Che cosa permette questo indirizzo, e se in questo momento lo permette davvero. */
+/* Che cosa permette l'indirizzo con cui questa pagina è stata aperta. */
 var puoScrivere = false;
-var scritturaDisponibile = false;
 
 /* Mentre è aperto, il ridisegno non gira: dentro c'è quello che l'utente sta scrivendo. */
 var moduloAperto = false;
@@ -43,7 +42,6 @@ var daAnnullare = null;
 var elenco = document.getElementById('elenco');
 var vuoto = document.getElementById('vuoto');
 var avviso = document.getElementById('avviso');
-var serveApp = document.getElementById('serve-app');
 var bottoneNuovo = document.getElementById('nuovo');
 var barraAnnulla = document.getElementById('annulla-barra');
 var testoAnnulla = document.getElementById('annulla-testo');
@@ -107,8 +105,6 @@ function bottone(etichetta, principale, onClick) {
   b.type = 'button';
   b.className = principale ? 'azione principale' : 'azione';
   b.textContent = etichetta;
-  /* Spento, non nascosto: vedi il commento in index.html accanto a `#serve-app`. */
-  b.disabled = !scritturaDisponibile;
   b.addEventListener('click', onClick);
   return b;
 }
@@ -161,9 +157,6 @@ function disegna() {
   vuoto.hidden = !(primaRisposta && eventi.length === 0);
 
   bottoneNuovo.hidden = !puoScrivere;
-  bottoneNuovo.disabled = !scritturaDisponibile;
-  serveApp.hidden = !(puoScrivere && !scritturaDisponibile);
-  bottoneAnnulla.disabled = !scritturaDisponibile;
 }
 
 function mostraAvviso(testo) {
@@ -192,7 +185,6 @@ function applica(dati) {
   }
   eventi = dati.eventi || [];
   puoScrivere = dati.permessi === 'scrittura';
-  scritturaDisponibile = !!dati.scritturaDisponibile;
   primaRisposta = true;
   disegna();
 }
@@ -251,9 +243,6 @@ function spiegaRifiuto(stato, corpo) {
     return 'Questo indirizzo permette solo di guardare. Per modificare serve l\'altro indirizzo, ' +
       'quello che il telefono mostra sotto «Serve anche modificare dal browser?».';
   }
-  if (stato === 503) {
-    return corpo || 'Apri l\'app sul telefono per modificare.';
-  }
   if (stato === 409) {
     return 'Questo promemoria è stato modificato sul telefono nel frattempo. ' +
       'Qui sopra c\'è il valore aggiornato: se serve, rifai la modifica.';
@@ -297,12 +286,6 @@ function invia(percorso, metodo, corpo, onFatto, onErrore) {
     }
     return risposta.text().then(function (testo) {
       onErrore(spiegaRifiuto(risposta.status, testo));
-      // Un 503 vuol dire che l'app si è chiusa: la pagina lo saprà comunque al giro successivo,
-      // ma aspettare trenta secondi per spegnere i comandi sarebbe una bugia nel frattempo.
-      if (risposta.status === 503) {
-        scritturaDisponibile = false;
-        if (!moduloAperto) disegna();
-      }
     });
   }).catch(function () {
     onErrore('Il telefono non risponde. Quello che hai scritto è ancora qui: riprova.');

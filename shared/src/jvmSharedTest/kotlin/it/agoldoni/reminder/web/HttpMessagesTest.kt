@@ -397,8 +397,7 @@ class HttpMessagesTest {
             201 to "Created",
             409 to "Conflict",
             415 to "Unsupported Media Type",
-            422 to "Unprocessable Content",
-            503 to "Service Unavailable"
+            422 to "Unprocessable Content"
         )) {
             val uscita = ByteArrayOutputStream()
             scriviRisposta(uscita, HttpResponse.vuota(codice))

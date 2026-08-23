@@ -144,9 +144,8 @@ fun SezioneWebApp(
 
             if (stato.enabled) {
                 Text(
-                    "Resta aperta anche a app chiusa: una notifica fissa te lo ricorda, e da lì " +
-                        "puoi spegnerla. Ad app chiusa si può però solo guardare: per modificare " +
-                        "dal browser, l'app dev'essere aperta qui.",
+                    "Resta aperta anche a app chiusa, per guardare e per modificare: una " +
+                        "notifica fissa te lo ricorda, e da lì puoi spegnerla.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -217,8 +216,7 @@ private fun IndirizzoCompleto(url: String, onCopia: (String) -> Unit) {
         RigaIndirizzo(url, onCopia)
         Text(
             "Con questo indirizzo si creano, si modificano e si completano i promemoria. " +
-                "Tienilo per te: a chi deve solo guardare dài l'altro. " +
-                "Le modifiche funzionano solo mentre l'app è aperta su questo telefono.",
+                "Tienilo per te: a chi deve solo guardare dài l'altro.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

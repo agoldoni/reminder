@@ -120,7 +120,7 @@ e «tutti comandano».
    `Content-Length` esplicito, limite duro, niente `Transfer-Encoding`.
 10. **Versione 2 del formato di scambio**, con il livello di accesso dichiarato dal server nel
     payload.
-11. **La scrittura richiede l'app aperta** sul telefono (D-08, decisa dopo questa stesura).
+11. ~~La scrittura richiede l'app aperta sul telefono (D-08).~~ **Revocata il 23/08/2026**: la verifica sul dispositivo dice che ad app chiusa si scrive, sveglie comprese. Si scrive tutte le volte che la porta è aperta.
 
 ### Escluso (out of scope)
 

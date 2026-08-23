@@ -34,17 +34,18 @@ private const val HEADER_SCRITTO = "X-Promemoria-Scritto"
  * la feature 002 aveva scelto prevedendo le scritture, e infatti aggiungerle ha voluto dire
  * aggiungere due rami invece di riscrivere.
  *
- * **L'ordine dei controlli d'accesso non è indifferente.** Prima il token, poi il livello, e solo
- * alla fine se l'app è aperta. Guardare per ultimo il token direbbe a uno sconosciuto — che non ha
- * nessuna credenziale — se il telefono è in uso in questo momento.
+ * **Si scrive tutte le volte che la porta è aperta**, anche ad app chiusa. Una prima stesura lo
+ * permetteva solo con l'app in primo piano, per prudenza e perché non si sapeva se scrivere ad app
+ * chiusa funzionasse: la verifica sul dispositivo dice che funziona — database e sveglie, con
+ * l'Activity distrutta e il processo tenuto vivo dal solo servizio in primo piano. Restare stretti
+ * avrebbe voluto dire rifiutare qualcosa che funziona, cioè rispondere una bugia; e come difesa
+ * quel cancello non fermava comunque chi ha il token e sceglie il momento.
  */
 internal class Router(
     private val scritture: ScrittureWeb,
     private val token: AccessToken,
     /** Il DAO serve solo a comporre la rappresentazione; chi scrive è [scritture]. */
-    private val dao: it.agoldoni.reminder.data.EventDao,
-    /** Se l'app è davanti all'utente adesso. Le scritture funzionano solo mentre lo è. */
-    private val appDavanti: () -> Boolean
+    private val dao: it.agoldoni.reminder.data.EventDao
 ) {
 
     suspend fun gestisci(request: HttpRequest, provenienza: String): HttpResponse {
@@ -119,8 +120,6 @@ internal class Router(
         azione: suspend () -> EsitoScrittura
     ): HttpResponse {
         if (!accesso.puoScrivere) return negato()
-        // Dopo il token, mai prima: vedi il commento in testa alla classe.
-        if (!appDavanti()) return appNonDavanti()
         if (!tipoAmmesso(request)) return HttpResponse.vuota(415)
 
         return when (val esito = azione()) {
@@ -153,9 +152,7 @@ internal class Router(
 
     private suspend fun rappresentazione(accesso: Accesso): CorpoJson = corpoEventi(
         dao = dao,
-        permessi = if (accesso.puoScrivere) PermessiWeb.SCRITTURA else PermessiWeb.LETTURA,
-        // Solo chi può scrivere ha motivo di sapere se in questo momento può farlo.
-        scritturaDisponibile = accesso.puoScrivere && appDavanti()
+        permessi = if (accesso.puoScrivere) PermessiWeb.SCRITTURA else PermessiWeb.LETTURA
     )
 
     /**
@@ -193,12 +190,4 @@ internal class Router(
      * stava facendo quando ha ricevuto il rifiuto.
      */
     private fun negato() = HttpResponse.vuota(403)
-
-    /**
-     * Qui invece si dice perché, e non è incoerente con [negato]. Chi arriva fin qui ha **già
-     * dimostrato** di avere il token di scrittura: tacere non lo tiene fuori da niente, lo lascia
-     * solo davanti a un rifiuto senza spiegazione.
-     */
-    private fun appNonDavanti() =
-        HttpResponse.testo(503, "Apri l'app sul telefono per modificare i promemoria.")
 }

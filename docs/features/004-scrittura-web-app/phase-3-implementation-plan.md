@@ -121,8 +121,8 @@ trova (001 desktop, 002 browser, 003 in sicurezza). Questa chiude il cerchio ren
 | **D-05** | Che cosa restituisce una scrittura riuscita | **La lista intera con il suo `ETag`**, cioè l'uscita di `corpoEventi`. Una sola funzione costruisce la rappresentazione, quindi lettura e scrittura non possono divergere | Fase 2 §B.4 |
 | **D-06** | Atomicità del controllo ottimistico | **`UPDATE … WHERE id = :id AND updatedAt = :atteso`**, con il numero di righe toccate come esito. Un `Mutex` nel livello web non coprirebbe la corsa con il telefono, che è proprio il caso da coprire | Fase 2 §B.7 |
 | **D-04c/d/e** | I tre limiti numerici | **Titolo 200 caratteri, descrizione 2000, date 1970–2100.** Approvati come proposti | Fase 3 |
-| **D-08** | Quando è possibile scrivere | **Solo con l'app aperta** — Activity visibile, `onStart`…`onStop`. È l'unico stato che Android riporta in modo affidabile ed è simmetrico all'aggancio già esistente di `resume()`. Ad app chiusa la porta serve **solo letture**, cioè torna a essere quella della 003 | Fase 3 |
-| **D-09** | Cosa mostra la pagina quando la scrittura non è disponibile | **Comandi visibili ma spenti, con la ragione scritta.** Nasconderli farebbe sembrare l'indirizzo completo quello sbagliato; lasciarli attivi farebbe scoprire il rifiuto dopo aver scritto, che è ciò che US-006 chiede di evitare | Fase 3 |
+| **D-08** ⛔ **revocata 23/08** — vedi §11 | Quando è possibile scrivere | ~~**Solo con l'app aperta** — Activity visibile, `onStart`…`onStop`. È l'unico stato che Android riporta in modo affidabile ed è simmetrico all'aggancio già esistente di `resume()`. Ad app chiusa la porta serve **solo letture**~~ · **V-D è passata: si scrive sempre** | Fase 3 · §11 |
+| **D-09** ⛔ **decaduta con D-08** | Cosa mostra la pagina quando la scrittura non è disponibile | ~~**Comandi visibili ma spenti, con la ragione scritta.** Nasconderli farebbe sembrare l'indirizzo completo quello sbagliato; lasciarli attivi farebbe scoprire il rifiuto dopo aver scritto~~ · non c'è più nessuno stato da mostrare | Fase 3 · §11 |
 | **D-07** | Il telefono segnala che qualcosa è cambiato dal browser? | **No.** Nessuna notifica, nessun indicatore: **la lista si aggiorna e basta**, cosa che già fa da sé perché `getActiveSortedAsc()` è un `Flow` di Room. Costo di implementazione: zero. L'unico utente è il proprietario, che sa di averlo fatto | Fase 3 |
 
 ### Decisioni aperte
@@ -611,3 +611,50 @@ le usa.
 ---
 
 *Documento generato con la skill `claude-code-feature`.*
+
+
+---
+
+## 11. Revoca di D-08 e D-09 (23/08/2026)
+
+**Il vincolo «si scrive solo ad app aperta» è stato tolto.** Con esso sono spariti `503`,
+`scritturaDisponibile`, lo stato spento della pagina, `WebServerController.pause()`,
+`WebStatus.appDavanti` e l'`onStop` di `MainActivity`.
+
+### Perché
+
+Due ragioni, e la prima è un fatto misurato.
+
+**V-D è passata.** La verifica che D-08 aveva fatto decadere — «una scrittura al DAO con l'app
+chiusa e il processo tenuto vivo da `WebServerService`» — è stata eseguita sull'emulatore
+disattivando temporaneamente il cancello, e ha risposto **sì** in entrambi gli stati:
+
+| Stato | Scrittura | Sveglia |
+|---|---|---|
+| App in secondo piano (Home premuto, Activity viva) | `201` | programmata |
+| App **tolta dai recenti** — `MainActivity` distrutta, vive solo il servizio | `201` | programmata all'ora giusta |
+
+**La distinzione che era stata persa.** D-08 nasceva dalla domanda 3, che parlava di app *chiusa*;
+l'implementazione l'aveva resa su Activity *visibile*, che è più stretto. Gli stati sono tre — in
+primo piano, in secondo piano, chiusa — e il secondo veniva rifiutato senza che nessuno l'avesse
+chiesto. Con V-D passata, mettere il confine fra il secondo e il terzo avrebbe voluto dire rifiutare
+qualcosa che funziona: un `503` che dice una bugia.
+
+Restava quindi una scelta binaria, e il cancello non era più un limite tecnico ma una posizione di
+sicurezza — modesta, perché non ferma chi ha il token di scrittura e sceglie il momento in cui il
+telefono è in uso. Il suo valore vero era togliere un'incognita, e l'incognita non c'era.
+
+### Che cosa cambia nei rischi
+
+- **R-02** resta, e sale di un gradino: l'indirizzo con le modifiche funziona a qualunque ora, non
+  solo mentre il proprietario è davanti al telefono. Rischio **accettato**, dichiarato qui.
+- **R-17** (la rotazione dello schermo abbassa la bandiera) **sparisce**: non c'è più una bandiera.
+- **V-D** esce dalle verifiche aperte: eseguita e passata.
+
+### Una cosa emersa per strada, che non riguarda questa feature
+
+Al primo giro di prova, con `POST_NOTIFICATIONS` negato, **`WebServerService` non risultava avviato
+affatto** — né servizio né notifica in `dumpsys` — mentre la card dell'app non segnalava nulla,
+perché la porta funzionava lo stesso grazie all'Activity viva. Se si conferma, vuol dire che negando
+le notifiche la promessa «resta aperta anche ad app chiusa» decade **in silenzio**. Viene dalla
+feature 002 e va guardato a parte.

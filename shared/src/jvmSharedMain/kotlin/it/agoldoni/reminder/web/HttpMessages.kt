@@ -385,6 +385,5 @@ private fun descrizione(status: Int) = when (status) {
     409 -> "Conflict"
     415 -> "Unsupported Media Type"
     422 -> "Unprocessable Content"
-    503 -> "Service Unavailable"
     else -> "Error"
 }

@@ -51,20 +51,10 @@ class WebService(
 
     private val token = AccessToken(now)
 
-    /**
-     * Se l'app è davanti all'utente. **Non** è la stessa cosa dell'essere in ascolto: la porta
-     * sopravvive alla chiusura dell'app grazie al servizio in primo piano, l'attenzione
-     * dell'utente no. Ad app chiusa si continua a servire la pagina e i dati — cioè si torna a
-     * essere esattamente il servizio della feature 003 — e le scritture ricevono `503`.
-     */
-    @Volatile
-    private var appDavanti = false
-
     private val router = Router(
         scritture = ScrittureWeb(dao, alarms, deviceId, now),
         token = token,
-        dao = dao,
-        appDavanti = { appDavanti }
+        dao = dao
     )
     private val certificati = CertificateStore(cartellaCertificato, now = now)
 
@@ -119,32 +109,12 @@ class WebService(
     }
 
     override fun resume() {
-        // **Prima di tutto il resto, e anche a interruttore spento.** L'app è davanti: è un fatto,
-        // non una conseguenza dell'essere accesi, e va registrato anche se non c'è nessuna porta
-        // da riaprire.
-        segnalaAppDavanti(true)
         if (!settings.webEnabled.value) return
         // Già in ascolto: non c'è niente da riaprire, e richiamare il custode qui produrrebbe un
         // andirivieni con chi lo ha appena avviato.
         if (_status.value.listening) return
         apri()
         if (_status.value.listening) ingaggiaCustode()
-    }
-
-    override fun pause() = segnalaAppDavanti(false)
-
-    /**
-     * **Non chiude la porta**, abbassa solo una bandiera. Confondere le due cose richiuderebbe il
-     * socket a ogni rotazione dello schermo — che è un giro completo di `onStop`/`onStart` — e
-     * disferebbe la feature 002.
-     *
-     * La rotazione resta comunque una finestra in cui la scrittura risulta non disponibile, per
-     * una frazione di secondo. È il terzo posto in cui questo progetto incontra quel giro (prima
-     * il token, poi il certificato), e qui il danno massimo è un comando spento per un istante.
-     */
-    private fun segnalaAppDavanti(davanti: Boolean) {
-        appDavanti = davanti
-        _status.value = _status.value.copy(appDavanti = davanti)
     }
 
     /**

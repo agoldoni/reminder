@@ -66,15 +66,6 @@ internal data class WebPayload(
     val versione: Int = WEB_PAYLOAD_VERSION,
     /** Che cosa permette l'indirizzo con cui si è entrati. */
     val permessi: PermessiWeb,
-    /**
-     * Se in **questo momento** la scrittura è esercitabile, cioè se l'app è aperta sul telefono.
-     *
-     * Sta accanto a [permessi] e non al suo posto perché sono due cose diverse: uno dice quale
-     * potere ha l'indirizzo, l'altro se adesso lo si può usare. Fonderli darebbe una pagina che si
-     * traveste da quella di sola lettura appena il telefono va in tasca, e chi ha copiato
-     * l'indirizzo completo penserebbe di aver copiato quello sbagliato.
-     */
-    val scritturaDisponibile: Boolean,
     val eventi: List<VoceWeb>
 )
 
@@ -105,21 +96,16 @@ internal fun EventEntity.toVoceWeb() = VoceWeb(
  * **È l'unico posto che costruisce la rappresentazione**, e ci passano sia la lettura sia le
  * risposte alle scritture: così le due non possono divergere, perché non hanno due strade.
  *
- * Due conseguenze del fatto che [permessi] e [scritturaDisponibile] finiscono **dentro** il corpo,
- * su cui si calcola l'impronta. La prima: due client con token diversi ricevono impronte diverse,
- * il che è innocuo perché ciascun browser confronta l'impronta con la propria. La seconda è utile
- * ed è voluta: quando l'app si apre sul telefono il corpo cambia, quindi l'impronta cambia, quindi
- * la pagina ridisegna e i comandi si riaccendono — **senza una sola richiesta in più** rispetto al
- * controllo periodico che già c'è.
+ * [permessi] finisce **dentro** il corpo, su cui si calcola l'impronta, quindi due client con token
+ * diversi ricevono impronte diverse. È innocuo: ciascun browser confronta l'impronta con la
+ * propria, e le due sessioni non si vedono.
  */
 internal suspend fun corpoEventi(
     dao: EventDao,
-    permessi: PermessiWeb,
-    scritturaDisponibile: Boolean
+    permessi: PermessiWeb
 ): CorpoJson {
     val payload = WebPayload(
         permessi = permessi,
-        scritturaDisponibile = scritturaDisponibile,
         eventi = dao.getAllOpen().map { it.toVoceWeb() }
     )
     val bytes = json.encodeToString(payload).encodeToByteArray()

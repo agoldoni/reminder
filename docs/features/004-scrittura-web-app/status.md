@@ -1,6 +1,6 @@
 # Promemoria modificabili dalla web app locale — Stato
 
-**Aggiornato:** 2026-08-23
+**Aggiornato:** 2026-08-23 (secondo giro)
 **Stato:** **implementata e verificata** su emulatore (API 33) e, per la parte di piattaforma, sul
 telefono di prova (API 29). Resta la prova su rete reale, che in questo ambiente non è eseguibile.
 **Piano:** [phase-3-implementation-plan.md](phase-3-implementation-plan.md)
@@ -103,6 +103,37 @@ l'impronta di una scrittura coincida con quella della `GET` successiva, così il
 
 ---
 
+## Secondo giro: D-08 revocata, si scrive anche ad app chiusa
+
+**V-D è stata eseguita ed è passata**, e con essa è caduto il vincolo «si scrive solo ad app
+aperta». Il piano l'aveva dichiarata decaduta proprio perché D-08 la rendeva inutile; rieseguirla ha
+detto che l'incognita non c'era.
+
+| Stato | Scrittura | Sveglia |
+|---|---|---|
+| App in secondo piano (Home, Activity viva) | ✅ `201` | ✅ |
+| App **tolta dai recenti** — `MainActivity` distrutta, vive solo `WebServerService` | ✅ `201` | ✅ all'ora giusta |
+
+Sono spariti: il `503`, `scritturaDisponibile` nel payload, lo stato spento della pagina, l'avviso
+«Apri l'app sul telefono», `WebServerController.pause()`, `WebStatus.appDavanti` e l'`onStop` di
+`MainActivity`. **R-17 sparisce** con la bandiera che lo causava; **R-02 sale di un gradino** ed è
+accettato: l'indirizzo con le modifiche funziona a qualunque ora.
+
+Verificato senza patch, con l'app tolta dai recenti: `POST` → `201`, sveglia programmata, e il token
+di lettura continua a ricevere `403`.
+
+**Suite dopo la revoca:** **313 test, 0 falliti**.
+
+### Un difetto della 002 emerso per strada
+
+Al primo giro di prova, con `POST_NOTIFICATIONS` **negato**, `WebServerService` non risultava
+avviato affatto — né servizio né notifica in `dumpsys` — e la card dell'app non segnalava nulla,
+perché la porta funzionava lo stesso grazie all'Activity viva. Se si conferma, negando le notifiche
+la promessa «resta aperta anche ad app chiusa» decade **in silenzio**. Non è di questa feature: va
+guardato a parte.
+
+---
+
 ## Resta da fare
 
 1. **Prova su rete reale** fra telefono e computer sullo stesso Wi-Fi. Stesso limite della 003: il
@@ -110,10 +141,12 @@ l'impronta di una scrittura coincida con quella della `GET` successiva, così il
    provare passando da `adb forward` è stato provato.
 2. **Prova con un browser di telefono**, per il modulo su schermo stretto: qui è stato provato in
    Chromium su desktop.
-3. **La rotazione dello schermo durante una scrittura** (R-17): il caso è coperto per costruzione —
-   un errore non chiude il modulo e non perde il testo — ma non è stato osservato dal vivo.
+3. ~~La rotazione dello schermo durante una scrittura (R-17).~~ **Non si applica più**: la bandiera
+   che la rendeva un caso non esiste.
 4. **Firefox** non è stato provato, come nella 003.
 5. **Nulla di bloccante:** la feature è completa e coerente con il piano.
+
+5. **Il servizio in primo piano con le notifiche negate**, vedi sopra: viene dalla 002.
 
 Idee rimandate: cancellazione dal browser, vista dei completati, sincronizzazione immediata dopo
 una scrittura, segnale sul telefono di ciò che è cambiato dal browser (D-07, chiusa con un «no»).

@@ -43,15 +43,6 @@ data class WebStatus(
      * che distingue «cifrato» da «cifrato e autenticato».
      */
     val impronta: String? = null,
-    /**
-     * Se l'app è in questo momento davanti all'utente. **La scrittura dal browser funziona solo
-     * mentre lo è**: ad app chiusa la porta resta aperta e serve letture, esattamente come faceva
-     * prima che le scritture esistessero.
-     *
-     * Non è la stessa cosa di [listening], e la differenza è tutta qui: la porta sopravvive alla
-     * chiusura dell'app grazie al servizio in primo piano, l'attenzione dell'utente no.
-     */
-    val appDavanti: Boolean = false,
     /** Esito o errore dell'ultimo tentativo, già in italiano. */
     val lastMessage: String? = null
 ) {
@@ -119,18 +110,8 @@ interface WebServerController {
      * ricreato.
      *
      * Non fa nulla se si sta già ascoltando, così chiamarla due volte non costa niente.
-     *
-     * Registra anche che **l'app è davanti all'utente**, cosa che vale a interruttore spento come
-     * acceso: è un fatto sul telefono, non una conseguenza dell'avere una porta aperta.
      */
     fun resume()
-
-    /**
-     * L'app non è più davanti. **Non chiude la porta** — quella sopravvive alla chiusura dell'app,
-     * ed è tutta la ragione per cui esiste il servizio in primo piano — ma da qui in poi le
-     * scritture dal browser sono rifiutate finché l'utente non torna.
-     */
-    fun pause()
 }
 
 /**
@@ -156,5 +137,4 @@ object WebServerNonDisponibile : WebServerController {
     override fun enable() = Unit
     override fun disable() = Unit
     override fun resume() = Unit
-    override fun pause() = Unit
 }

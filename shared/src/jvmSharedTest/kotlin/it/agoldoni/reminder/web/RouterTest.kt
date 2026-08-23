@@ -39,14 +39,12 @@ class RouterTest {
     private val dao = FakeEventDao()
     private val alarms = RecordingAlarmScheduler()
     private val token = AccessToken()
-    private var appDavanti = true
     private var orologio = 5_000L
 
     private val router = Router(
         scritture = ScrittureWeb(dao, alarms, "questo-telefono") { orologio },
         token = token,
-        dao = dao,
-        appDavanti = { appDavanti }
+        dao = dao
     )
 
     private val buoni = token.rigenera()
@@ -229,46 +227,22 @@ class RouterTest {
         assertTrue(dao.events.isEmpty())
     }
 
-    // --- L'app aperta (D-08) -------------------------------------------------------------------
+    // --- Si scrive anche ad app chiusa ---------------------------------------------------------
 
     @Test
-    fun `ad app chiusa la lettura passa e la scrittura riceve 503`() {
-        appDavanti = false
-
-        assertEquals(200, get("/api/eventi").status, "la porta resta quella della 003")
-        assertEquals(200, get("/").status)
-
-        assertEquals(503, crea().status)
-        assertTrue(dao.events.isEmpty(), "un 503 non deve aver creato niente")
-    }
-
-    @Test
-    fun `ad app chiusa e senza token la risposta e' 403, non 503`() {
-        // L'ordine dei controlli: al contrario, uno sconosciuto senza nessuna credenziale
-        // saprebbe se il telefono è in uso in questo momento.
-        appDavanti = false
-        assertEquals(403, crea(t = null).status)
-        assertEquals(403, crea(t = "sbagliato").status)
-        assertEquals(403, crea(t = lettura).status, "nemmeno un token valido ma insufficiente")
-    }
-
-    @Test
-    fun `riaprendo l'app la scrittura torna disponibile senza altro`() {
-        appDavanti = false
-        assertEquals(503, crea().status)
-        appDavanti = true
+    fun `la scrittura non dipende dallo stato dell'app`() {
+        // Una prima stesura la permetteva solo con l'app in primo piano. La verifica sul
+        // dispositivo dice che ad app chiusa funziona — database e sveglie, con l'Activity
+        // distrutta e il processo tenuto vivo dal solo servizio in primo piano — e rifiutarla
+        // sarebbe stato rispondere una bugia. Qui non c'è nessuno stato da simulare: è il punto.
         assertEquals(201, crea().status)
+        assertEquals(1, dao.events.size)
     }
 
     @Test
-    fun `il 503 spiega perche', a differenza del 403`() {
-        appDavanti = false
-        val risposta = crea()
-        assertTrue(
-            risposta.body.isNotEmpty(),
-            "chi arriva qui ha già dimostrato di avere il token: tacere non lo tiene fuori da niente"
-        )
-        assertTrue(get("/api/eventi", t = null).body.isEmpty(), "il 403 invece non dice niente")
+    fun `il payload non dichiara piu' una disponibilita' che non esiste`() {
+        val corpo = get("/api/eventi", t = scrittura).body.decodeToString()
+        assertTrue("scritturaDisponibile" !in corpo, "campo rimosso con il cancello: $corpo")
     }
 
     // --- Corpo e tipo --------------------------------------------------------------------------
@@ -443,25 +417,20 @@ class RouterTest {
     }
 
     @Test
-    fun `i permessi nel payload riflettono il token usato, non il momento`() {
+    fun `i permessi nel payload riflettono il token usato`() {
         assertTrue("\"permessi\":\"lettura\"" in get("/api/eventi", t = lettura).body.decodeToString())
         assertTrue("\"permessi\":\"scrittura\"" in get("/api/eventi", t = scrittura).body.decodeToString())
-
-        // Ad app chiusa il **permesso** resta quello del token: cambia solo la disponibilità.
-        appDavanti = false
-        val corpo = get("/api/eventi", t = scrittura).body.decodeToString()
-        assertTrue("\"permessi\":\"scrittura\"" in corpo, corpo)
-        assertTrue("\"scritturaDisponibile\":false" in corpo, corpo)
     }
 
     @Test
-    fun `la disponibilita' della scrittura segue l'app, e cambia l'impronta`() {
-        // È il meccanismo con cui i comandi si riaccendono da soli: il corpo cambia, quindi
-        // l'impronta cambia, quindi la pagina ridisegna — senza una richiesta in più.
+    fun `i due token vedono impronte diverse, e non si disturbano`() {
+        // `permessi` sta dentro il corpo, su cui si calcola l'impronta. È innocuo: ogni browser
+        // confronta l'impronta con la propria, e le due sessioni non si vedono.
         runBlocking { dao.insert(evento(id = 1, titolo = "spesa", quando = 1_000)) }
-        val conApp = get("/api/eventi", t = scrittura).extra["ETag"]
-        appDavanti = false
-        assertNotEquals(conApp, get("/api/eventi", t = scrittura).extra["ETag"])
+        assertNotEquals(
+            get("/api/eventi", t = lettura).extra["ETag"],
+            get("/api/eventi", t = scrittura).extra["ETag"]
+        )
     }
 
     @Test

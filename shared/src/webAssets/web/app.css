@@ -85,7 +85,7 @@ header {
 h1 { margin: 0; font-size: 1.25rem; font-weight: 600; }
 
 /* Su schermo largo il testo non deve stirarsi da un bordo all'altro. */
-main, #avviso, #vuoto, #serve-app, #annulla-barra { max-width: 46rem; margin: 0 auto; }
+main, #avviso, #vuoto, #annulla-barra { max-width: 46rem; margin: 0 auto; }
 
 main { padding: 16px; display: flex; flex-direction: column; gap: 8px; }
 
@@ -98,18 +98,6 @@ main { padding: 16px; display: flex; flex-direction: column; gap: 8px; }
 }
 
 #vuoto { padding: 48px 16px; text-align: center; color: var(--tenue); }
-
-/*
-  L'app non è aperta sul telefono. Non è un errore — la pagina funziona, semplicemente in sola
-  lettura — quindi non prende il rosso di `#avviso`: è un'informazione, non un guasto.
-*/
-#serve-app {
-  margin: 16px auto 0;
-  padding: 12px 16px;
-  border-left: 4px solid var(--tenue);
-  color: var(--tenue);
-  font-size: 0.9rem;
-}
 
 /*
   **Ancorata in fondo alla finestra, non in fondo al documento.**
@@ -164,15 +152,6 @@ main { padding: 16px; display: flex; flex-direction: column; gap: 8px; }
   color: var(--barra);
   border-color: transparent;
   font-weight: 600;
-}
-
-/*
-  **Spento, non nascosto.** `disabled` da solo lascerebbe il pulsante quasi identico a quello
-  attivo su alcuni browser, e il primo tocco a vuoto sarebbe una sorpresa.
-*/
-.azione:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
 }
 
 .comandi {
