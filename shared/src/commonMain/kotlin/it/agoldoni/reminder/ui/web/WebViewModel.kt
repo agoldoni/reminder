@@ -21,4 +21,13 @@ class WebViewModel(private val controller: WebServerController) : ViewModel() {
     fun accendi() = controller.enable()
 
     fun spegni() = controller.disable()
+
+    /**
+     * Butta via la chiave di firma: ogni indirizzo consegnato finora smette di funzionare.
+     *
+     * È un gesto separato da [spegni] e va tenuto separato: l'interruttore chiude la porta, questo
+     * cambia le serrature. Confonderli è precisamente l'errore che l'utente commetteva prima,
+     * quando spegnere era l'unico modo di togliere un accesso — e toglieva l'accesso a tutti.
+     */
+    fun revoca() = controller.revoke()
 }

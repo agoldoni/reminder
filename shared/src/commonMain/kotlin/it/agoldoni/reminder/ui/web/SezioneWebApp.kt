@@ -6,12 +6,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.clickable
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -27,6 +29,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import it.agoldoni.reminder.platform.LocalAppContainer
+import it.agoldoni.reminder.platform.formatDate
 import it.agoldoni.reminder.platform.sistemaConfermaLaCopia
 import it.agoldoni.reminder.ui.icons.CopyIcon
 
@@ -81,7 +84,10 @@ fun SezioneWebApp(
             val url = stato.urlLettura
             when {
                 !stato.enabled -> Text(
-                    "Spenta: nessuno può raggiungere i promemoria da questo dispositivo.",
+                    "Spenta: nessuno può raggiungere i promemoria da questo dispositivo. " +
+                        "Spegnere però non toglie l'accesso a chi ha già l'indirizzo: quando " +
+                        "riaccendi tornerà a funzionare. Per toglierlo davvero c'è «Revoca gli " +
+                        "accessi», qui sotto.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -97,10 +103,14 @@ fun SezioneWebApp(
                         }
                     }
                     // Il codice in fondo all'indirizzo è la sola cosa che tiene fuori gli altri:
-                    // va detto, o verrà copiato via senza pensarci.
+                    // va detto, o verrà copiato via senza pensarci. **Ma va anche detto che serve
+                    // una volta sola**, o l'utente continuerà a ricopiarlo a ogni riaccensione —
+                    // che è la fatica che questa versione esiste per togliere.
                     Text(
-                        "Tocca per copiarlo. Serve per intero, codice compreso: senza quello la " +
-                            "pagina non si apre. Il codice cambia ogni volta che riaccendi.",
+                        "Tocca per copiarlo. Serve per intero, codice compreso: la prima volta " +
+                            "va aperto così. Dopo, su quel dispositivo, basterà l'indirizzo " +
+                            "senza il codice." +
+                            (stato.validoFinoA?.let { " Vale fino al ${formatDate(it)}." } ?: ""),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -150,7 +160,60 @@ fun SezioneWebApp(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+
+            Revoca {
+                viewModel.revoca()
+                onMessaggio("Accessi revocati: gli indirizzi consegnati non funzionano più.")
+            }
         }
+    }
+}
+
+/**
+ * «Revoca gli accessi»: l'unico gesto irreversibile di questa schermata, e l'unico che chiede
+ * conferma con un dialogo.
+ *
+ * **Perché c'è anche a interruttore spento.** Chi spegne credendo di aver tolto l'accesso deve
+ * trovare lì il gesto vero, non scoprirlo riaccendendo. Ruotare la chiave a porta chiusa è
+ * sensato: toglie l'accesso per quando la porta si riaprirà.
+ *
+ * **Perché un dialogo e non un tocco in più**, che è la forma usata da [IndirizzoCompleto] e
+ * [Impronta]. Quelle due nascondono una cosa che si può guardare e poi ignorare; questa fa una
+ * cosa che non si disfa, e le conseguenze — «tutti i dispositivi vanno rifatti» — non stanno in
+ * un'etichetta. È il primo `AlertDialog` di questa schermata, ed è giusto che sia questo.
+ */
+@Composable
+private fun Revoca(onConferma: () -> Unit) {
+    var chiede by remember { mutableStateOf(false) }
+
+    Text(
+        "Revoca gli accessi",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.error,
+        modifier = Modifier
+            .clickable { chiede = true }
+            .padding(vertical = 4.dp)
+    )
+
+    if (chiede) {
+        AlertDialog(
+            onDismissRequest = { chiede = false },
+            title = { Text("Revocare gli accessi?") },
+            text = {
+                Text(
+                    "Tutti gli indirizzi consegnati finora smetteranno di funzionare: ogni " +
+                        "browser a cui li hai dati vedrà «indirizzo non più valido». Per " +
+                        "rimetterli in riga dovrai riportare il nuovo indirizzo su ciascun " +
+                        "dispositivo. Non si può annullare."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { chiede = false; onConferma() }) { Text("Revoca") }
+            },
+            dismissButton = {
+                TextButton(onClick = { chiede = false }) { Text("Annulla") }
+            }
+        )
     }
 }
 
@@ -186,15 +249,17 @@ private fun RigaIndirizzo(url: String, onCopia: (String) -> Unit) {
 /**
  * L'indirizzo che permette anche di modificare, dietro un tocco.
  *
- * **Perché non è affiancato all'altro.** I due indirizzi differiscono solo negli otto caratteri
- * finali: uno sotto l'altro, con l'ellissi che ne taglia la coda, sono due stringhe
- * indistinguibili a colpo d'occhio. E i due errori possibili non pesano uguale — copiare questo
- * credendo di copiare quello di lettura regala il telecomando e **non dà nessun segnale**, mentre
- * l'errore opposto si scopre in tre secondi perché la pagina non ha i comandi. Il gesto che
- * sbaglia in silenzio è l'unico che richiede un tocco in più.
+ * **Perché non è affiancato all'altro.** Uno sotto l'altro, con l'ellissi che ne taglia la coda,
+ * sono due stringhe indistinguibili a colpo d'occhio — dalla feature 006 differiscono per tutta la
+ * coda invece che per gli otto caratteri finali, ma sono anche entrambi lunghi un paio di centinaia
+ * di caratteri, quindi illeggibili allo stesso modo. E i due errori possibili non pesano uguale:
+ * copiare questo credendo di copiare quello di lettura regala il telecomando e **non dà nessun
+ * segnale**, mentre l'errore opposto si scopre in tre secondi perché la pagina non ha i comandi. Il
+ * gesto che sbaglia in silenzio è l'unico che richiede un tocco in più.
  *
  * **Perché non ordinati per frequenza d'uso**, che sarebbe stata la scelta ovvia: entrambi si
- * copiano di rado, perché il codice cambia solo alla riaccensione e l'interruttore resta acceso.
+ * copiano di rado, e dalla 006 ancora più di rado — un indirizzo consegnato vale trenta giorni e
+ * sopravvive al riavvio dell'app, quindi si copia una volta per dispositivo e poi si dimentica.
  *
  * La forma è la stessa di [Impronta], che sta qui sotto per la stessa ragione: non fare rumore a
  * chi non sta cercando quella cosa lì.
