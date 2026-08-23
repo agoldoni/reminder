@@ -7,6 +7,20 @@ private const val PERCORSO_EVENTI = "/api/eventi"
 private const val PARAMETRO_TOKEN = "t"
 
 /**
+ * Il parametro che chiede di **restare in attesa** invece di rispondere subito.
+ *
+ * **È un interruttore e non una durata**, e la differenza non è di stile: un client che potesse
+ * chiedere «aspetta dieci minuti» inchioderebbe per dieci minuti una coroutine e un socket, e ne
+ * basterebbero otto per esaurire [ATTESE_MASSIME]. Quanto si aspetta lo decide il server.
+ *
+ * Su un percorso nuovo invece che su un parametro si è scelto il parametro: la risorsa è la stessa,
+ * cambia solo la consegna — e un percorso in più andrebbe aggiunto anche alla tabella `Allow` di
+ * [metodoSbagliato] e ragionato contro `StaticAssets`.
+ */
+private const val PARAMETRO_ATTESA = "attendi"
+private const val VALORE_ATTESA = "1"
+
+/**
  * L'unico tipo di corpo che si accetta, e non è pignoleria.
  *
  * Un modulo HTML su una pagina qualsiasi può inviare solo `x-www-form-urlencoded`,
@@ -45,7 +59,13 @@ internal class Router(
     private val scritture: ScrittureWeb,
     private val token: AccessToken,
     /** Il DAO serve solo a comporre la rappresentazione; chi scrive è [scritture]. */
-    private val dao: it.agoldoni.reminder.data.EventDao
+    private val dao: it.agoldoni.reminder.data.EventDao,
+    /**
+     * Il segnale di cambiamento. Il valore predefinito **non aspetta e non si sveglia mai**: chi
+     * costruisce un `Router` senza saperne nulla ottiene esattamente il comportamento di prima di
+     * questa feature.
+     */
+    private val cambiamenti: Cambiamenti = Cambiamenti.fermo
 ) {
 
     suspend fun gestisci(request: HttpRequest, provenienza: String): HttpResponse {
@@ -74,14 +94,46 @@ internal class Router(
         return HttpResponse(200, asset.contentType, contenuto)
     }
 
+    /**
+     * La lettura, in due modi che sono la stessa decisione presa in due momenti diversi.
+     *
+     * Senza `attendi` è quella di sempre: si compone, si confronta l'impronta, si risponde `200` o
+     * `304`. Con `attendi`, se l'impronta coincide non si risponde `304` subito ma si aspetta che
+     * cambi qualcosa — ed è tutta qui la differenza fra una pagina che scopre le modifiche entro
+     * mezzo minuto e una che le vede arrivare.
+     */
     private suspend fun eventi(request: HttpRequest, accesso: Accesso): HttpResponse {
+        // **L'ordine di queste due righe è il cuore della correttezza dell'attesa.** Il contatore
+        // si legge PRIMA di comporre il corpo: al contrario, una scrittura che cadesse in mezzo non
+        // sveglierebbe nessuno. Il perché per esteso sta su `Cambiamenti.versione`.
+        val visto = cambiamenti.versione
         val corpo = rappresentazione(accesso)
+        val atteso = request.header("if-none-match")
+
         // Si aggiorna solo se qualcosa è cambiato: a impronta uguale il browser tiene quel che ha
-        // e la pagina non si ridisegna, quindi non perde la posizione di scorrimento.
-        if (request.header("if-none-match") == corpo.etag) {
+        // e la pagina non si ridisegna, quindi non perde la posizione di scorrimento. Vale anche
+        // per chi stava aspettando: se l'impronta è già diversa si era perso un giro, e la risposta
+        // parte subito senza sospendere niente.
+        if (corpo.etag != atteso) return conCorpo(200, corpo)
+
+        // Chi non ha chiesto di aspettare riceve la risposta di sempre: è la compatibilità
+        // all'indietro, e viene gratis perché un client vecchio semplicemente non manda il
+        // parametro. Il timeout di lettura del socket non c'entra e non va toccato: quello è un
+        // `soTimeout`, cioè un limite alla *lettura*, e a questo punto non si legge più niente.
+        if (request.query[PARAMETRO_ATTESA] != VALORE_ATTESA) {
             return HttpResponse.vuota(304, mapOf("ETag" to corpo.etag))
         }
-        return HttpResponse(200, "application/json; charset=utf-8", corpo.bytes, mapOf("ETag" to corpo.etag))
+
+        // Si ricompone a ogni segnale e si riparte se l'impronta non è cambiata davvero: sulla
+        // tabella `events` si scrive anche per cose che non toccano i promemoria aperti.
+        val cambiato = cambiamenti.attendi(visto) {
+            rappresentazione(accesso).takeIf { it.etag != atteso }
+        }
+        return if (cambiato != null) {
+            conCorpo(200, cambiato)
+        } else {
+            HttpResponse.vuota(304, mapOf("ETag" to corpo.etag))
+        }
     }
 
     // --- Scrittura ----------------------------------------------------------------------------
@@ -140,15 +192,19 @@ internal class Router(
         status: Int,
         accesso: Accesso,
         extra: Map<String, String> = emptyMap()
-    ): HttpResponse {
-        val corpo = rappresentazione(accesso)
-        return HttpResponse(
-            status,
-            "application/json; charset=utf-8",
-            corpo.bytes,
-            extra + ("ETag" to corpo.etag)
-        )
-    }
+    ): HttpResponse = conCorpo(status, rappresentazione(accesso), extra)
+
+    /** Un corpo già composto e la sua impronta: lettura e scritture escono tutte da qui. */
+    private fun conCorpo(
+        status: Int,
+        corpo: CorpoJson,
+        extra: Map<String, String> = emptyMap()
+    ): HttpResponse = HttpResponse(
+        status,
+        "application/json; charset=utf-8",
+        corpo.bytes,
+        extra + ("ETag" to corpo.etag)
+    )
 
     private suspend fun rappresentazione(accesso: Accesso): CorpoJson = corpoEventi(
         dao = dao,

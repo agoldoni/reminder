@@ -4,6 +4,9 @@ import java.io.IOException
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -137,5 +140,44 @@ class HttpServerTest {
         val prima = istanza.start(requestedPort = 0)
         assertEquals(prima, istanza.start(requestedPort = 0))
         assertEquals(prima, istanza.port)
+    }
+
+    /**
+     * TC-12 — **una richiesta che resta appesa non blocca le altre.**
+     *
+     * In teoria non può: il ciclo di `accept` lancia una coroutine per connessione, ed è la ragione
+     * per cui l'attesa lunga della feature 005 è entrata in questa architettura senza toccarla. In
+     * pratica è esattamente il genere di garanzia che si scopre falsa il giorno in cui qualcuno la
+     * dà per buona e mette un `runBlocking` nel posto sbagliato.
+     *
+     * Niente attese a tempo: la richiesta appesa si sblocca quando lo dice il test.
+     */
+    @Test
+    fun `una connessione appesa non blocca le altre`() {
+        val arrivata = CountDownLatch(1)
+        val sbloccami = CompletableDeferred<Unit>()
+        val porta = avvia { richiesta, _ ->
+            if (richiesta.path == "/appesa") {
+                arrivata.countDown()
+                sbloccami.await()
+                HttpResponse.testo(200, "finalmente")
+            } else {
+                HttpResponse.testo(200, "subito")
+            }
+        }
+
+        Socket(InetAddress.getLoopbackAddress(), porta).use { appesa ->
+            appesa.soTimeout = 5_000
+            appesa.getOutputStream().write("GET /appesa HTTP/1.1\r\nHost: x\r\n\r\n".toByteArray())
+            appesa.getOutputStream().flush()
+            assertTrue(arrivata.await(5, TimeUnit.SECONDS), "la richiesta appesa non è arrivata")
+
+            // Il momento della verità: la prima è ferma dentro il gestore, la seconda deve passare.
+            assertTrue(parla(porta, "GET /veloce HTTP/1.1\r\n\r\n").endsWith("subito"))
+
+            sbloccami.complete(Unit)
+            val risposta = appesa.getInputStream().readBytes().toString(Charsets.ISO_8859_1)
+            assertTrue(risposta.endsWith("finalmente"), risposta)
+        }
     }
 }

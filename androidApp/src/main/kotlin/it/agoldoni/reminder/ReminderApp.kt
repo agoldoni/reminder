@@ -65,6 +65,13 @@ class ReminderApp : Application() {
         // insieme, e non devono condividere né stato né sorte.
         webService = WebService(
             dao = database.eventDao(),
+            // **Il segnale nasce dal database, non dai punti di scrittura.** L'invalidazione di
+            // Room è per tabella, quindi copre l'editor dell'app, il completamento, lo snooze di
+            // una notifica, `SyncEngine` e `ScrittureWeb` senza che nessuno debba ricordarsene —
+            // ed è l'unica ragione per cui questa riga sta qui e non dentro `WebService`: è
+            // `ReminderApp` il solo punto che ha in mano il database e non soltanto il suo DAO.
+            // `emitInitialState = false`: all'avvio non è cambiato niente, è solo iniziato.
+            cambiamenti = database.invalidationTracker.createFlow("events", emitInitialState = false),
             // Le stesse due dipendenze di `SyncEngine` qui sopra, e per la stessa ragione: chi
             // scrive un evento deve rimettere in riga la sua sveglia, e chi ne crea uno deve
             // sapere su quale dispositivo sta nascendo.

@@ -8,7 +8,9 @@ import it.agoldoni.reminder.sync.siteAddress
 import java.io.File
 import java.net.InetAddress
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
@@ -24,6 +26,15 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 class WebService(
     dao: EventDao,
+    /**
+     * Da dove arriva «qualcosa è cambiato». Su Android è l'invalidazione della tabella `events`,
+     * cioè un segnale che nasce dal **database** e non dai punti di scrittura: così nessun ramo
+     * futuro può dimenticarsi di annunciare, e la pagina non può diventare lenta in silenzio.
+     *
+     * Il valore predefinito è un flusso vuoto, e non nasconde un cablaggio dimenticato: senza
+     * segnale l'attesa scade e si risponde `304`, cioè il ritmo di prima di questa feature.
+     */
+    cambiamenti: Flow<*> = emptyFlow<Any>(),
     /**
      * Le sveglie. Sta qui perché una scrittura che non le rimette in riga produce il guasto
      * peggiore di tutta la feature: il dato è giusto nel database e la notifica arriva all'ora
@@ -51,10 +62,13 @@ class WebService(
 
     private val token = AccessToken(now)
 
+    private val segnale = Cambiamenti(cambiamenti, scope)
+
     private val router = Router(
         scritture = ScrittureWeb(dao, alarms, deviceId, now),
         token = token,
-        dao = dao
+        dao = dao,
+        cambiamenti = segnale
     )
     private val certificati = CertificateStore(cartellaCertificato, now = now)
 
