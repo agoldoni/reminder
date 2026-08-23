@@ -29,7 +29,12 @@ data class WebStatus(
     val host: String? = null,
     /** Porta su cui ci si è **effettivamente** legati, che con `WEB_PORT = 0` nei test non coincide. */
     val port: Int? = null,
-    val token: String? = null,
+    /**
+     * Il token che apre la pagina **in sola lettura**: è quello che si può dare a qualcun altro.
+     */
+    val tokenLettura: String? = null,
+    /** Il token che permette anche di modificare. Da tenere per sé. */
+    val tokenScrittura: String? = null,
     /**
      * Impronta SHA-256 del certificato che il server presenta, nella forma in cui la mostrano i
      * browser. Esiste perché un essere umano la confronti: il certificato è autofirmato, il
@@ -38,13 +43,21 @@ data class WebStatus(
      * che distingue «cifrato» da «cifrato e autenticato».
      */
     val impronta: String? = null,
+    /**
+     * Se l'app è in questo momento davanti all'utente. **La scrittura dal browser funziona solo
+     * mentre lo è**: ad app chiusa la porta resta aperta e serve letture, esattamente come faceva
+     * prima che le scritture esistessero.
+     *
+     * Non è la stessa cosa di [listening], e la differenza è tutta qui: la porta sopravvive alla
+     * chiusura dell'app grazie al servizio in primo piano, l'attenzione dell'utente no.
+     */
+    val appDavanti: Boolean = false,
     /** Esito o errore dell'ultimo tentativo, già in italiano. */
     val lastMessage: String? = null
 ) {
     /**
-     * L'indirizzo completo da digitare sull'altro dispositivo. Si compone qui e non nella
-     * schermata: due punti che lo compongono per conto proprio prima o poi lo compongono in due
-     * modi diversi, e chi digita non ha modo di sapere quale dei due è quello buono.
+     * L'indirizzo che apre la pagina **in sola lettura**: guarda, non tocca. È quello che si può
+     * dare a un'altra persona, ed è quello che la schermata mostra per primo.
      *
      * **`https` e non `http`**: la porta non parla più in chiaro. Tenerle aperte tutte e due
      * avrebbe conservato la debolezza che questa scelta esiste per chiudere — chi ascolta
@@ -52,8 +65,25 @@ data class WebStatus(
      * versione precedente smette di funzionare, e non in modo comprensibile: un client in chiaro
      * contro una porta TLS riceve spazzatura, non un errore. L'indirizzo giusto è sempre qui.
      */
-    val url: String?
-        get() = if (listening && host != null && port != null && token != null) {
+    val urlLettura: String? get() = indirizzo(tokenLettura)
+
+    /**
+     * L'indirizzo che permette anche di modificare. Da tenere per sé.
+     *
+     * Nella schermata sta dietro un tocco in più, e non è cortesia: i due indirizzi differiscono
+     * solo negli otto caratteri finali, quindi affiancati sono indistinguibili a colpo d'occhio —
+     * e i due errori possibili non pesano uguale. Copiare questo credendo di copiare l'altro
+     * regala il telecomando e non dà nessun segnale; l'errore opposto si scopre in tre secondi,
+     * perché la pagina non ha i comandi.
+     */
+    val urlScrittura: String? get() = indirizzo(tokenScrittura)
+
+    /**
+     * Si compone qui e non nella schermata: due punti che lo compongono per conto proprio prima o
+     * poi lo compongono in due modi diversi, e chi digita non ha modo di sapere quale è buono.
+     */
+    private fun indirizzo(token: String?): String? =
+        if (listening && host != null && port != null && token != null) {
             "https://$host:$port/?t=$token"
         } else {
             null
@@ -89,8 +119,18 @@ interface WebServerController {
      * ricreato.
      *
      * Non fa nulla se si sta già ascoltando, così chiamarla due volte non costa niente.
+     *
+     * Registra anche che **l'app è davanti all'utente**, cosa che vale a interruttore spento come
+     * acceso: è un fatto sul telefono, non una conseguenza dell'avere una porta aperta.
      */
     fun resume()
+
+    /**
+     * L'app non è più davanti. **Non chiude la porta** — quella sopravvive alla chiusura dell'app,
+     * ed è tutta la ragione per cui esiste il servizio in primo piano — ma da qui in poi le
+     * scritture dal browser sono rifiutate finché l'utente non torna.
+     */
+    fun pause()
 }
 
 /**
@@ -116,4 +156,5 @@ object WebServerNonDisponibile : WebServerController {
     override fun enable() = Unit
     override fun disable() = Unit
     override fun resume() = Unit
+    override fun pause() = Unit
 }

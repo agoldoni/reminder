@@ -15,6 +15,28 @@ private fun ok(grezza: String): HttpRequest =
     assertIs<RichiestaLetta.Ok>(leggi(grezza), "atteso Ok per:\n$grezza").request
 
 /**
+ * Richiesta costruita **a byte**, perché sul corpo si prova proprio ciò che non è testo ASCII:
+ * UTF-8 multibyte, sequenze non valide, e una lunghezza dichiarata che non coincide con quella
+ * vera. Con una `String` quei casi si perderebbero nella conversione prima di arrivare al parser.
+ */
+private fun grezzaConCorpo(
+    metodo: String = "POST",
+    corpo: ByteArray = ByteArray(0),
+    dichiarata: String? = corpo.size.toString(),
+    intestazioniInPiu: String = ""
+): ByteArray {
+    val testa = StringBuilder("$metodo /api/eventi?t=abc HTTP/1.1\r\nHost: x\r\n")
+    dichiarata?.let { testa.append("Content-Length: ").append(it).append("\r\n") }
+    testa.append(intestazioniInPiu).append("\r\n")
+    return testa.toString().toByteArray(Charsets.ISO_8859_1) + corpo
+}
+
+private fun leggiByte(grezzi: ByteArray): RichiestaLetta = leggiRichiesta(ByteArrayInputStream(grezzi))
+
+private fun malformata(grezzi: ByteArray, perche: String): String =
+    assertIs<RichiestaLetta.Malformata>(leggiByte(grezzi), perche).motivo
+
+/**
  * TC-01 — il parser non deve lanciare fuori per nessun input, per quanto costruito male.
  *
  * È il punto in cui la rete tocca il codice: qui arriva ciò che manda chiunque, non ciò che manda
@@ -193,5 +215,197 @@ class HttpMessagesTest {
         val uscita = ByteArrayOutputStream()
         scriviRisposta(uscita, HttpResponse.vuota(304, mapOf("ETag" to "\"abc\"")))
         assertTrue("ETag: \"abc\"" in uscita.toString(Charsets.ISO_8859_1.name()))
+    }
+
+    // --- Il corpo (feature 004) -----------------------------------------------------------------
+    //
+    // È la superficie nuova su una porta esposta, e la difesa che sostituisce non c'è più: prima
+    // il corpo non si leggeva affatto. Ogni test qui sotto sta in piedi da solo, ma il criterio è
+    // uno: **niente dev'essere ambiguo sulla lunghezza**.
+
+    @Test
+    fun `un corpo dichiarato si legge per intero`() {
+        val corpo = """{"titolo":"Dentista"}""".toByteArray()
+        val r = assertIs<RichiestaLetta.Ok>(leggiByte(grezzaConCorpo(corpo = corpo))).request
+        assertEquals("""{"titolo":"Dentista"}""", r.body)
+        assertEquals("POST", r.method)
+        assertEquals("abc", r.query["t"], "la query resta leggibile con un corpo dietro")
+    }
+
+    @Test
+    fun `si leggono esattamente i byte dichiarati, non uno di piu'`() {
+        // Il client ne manda venti e ne dichiara cinque: i quindici in eccesso non sono corpo, e
+        // trattarli come tale vorrebbe dire lasciare che sia il mittente a decidere dove finisce.
+        val r = assertIs<RichiestaLetta.Ok>(
+            leggiByte(grezzaConCorpo(corpo = "0123456789abcdefghij".toByteArray(), dichiarata = "5"))
+        ).request
+        assertEquals("01234", r.body)
+    }
+
+    @Test
+    fun `un corpo piu' corto del dichiarato e' malformato`() {
+        // Il client ha chiuso a metà: non si lavora su mezzo JSON.
+        malformata(
+            grezzaConCorpo(corpo = "0123".toByteArray(), dichiarata = "100"),
+            "un corpo troncato non va accettato"
+        )
+    }
+
+    @Test
+    fun `un POST senza content-length e' malformato`() {
+        malformata(
+            grezzaConCorpo(corpo = "{}".toByteArray(), dichiarata = null),
+            "senza lunghezza dichiarata non c'è modo non ambiguo di sapere dove finisce"
+        )
+    }
+
+    @Test
+    fun `un content-length non numerico e' malformato`() {
+        for (valore in listOf("abc", "-5", "+5", "5 5", "5,5", "0x10", " ", "5.0")) {
+            malformata(
+                grezzaConCorpo(corpo = "{}".toByteArray(), dichiarata = valore),
+                "«$valore» non è una lunghezza"
+            )
+        }
+    }
+
+    @Test
+    fun `un content-length fuori scala non fa lanciare`() {
+        // Più grande di un Int: deve diventare un 400, non un'eccezione di conversione.
+        malformata(
+            grezzaConCorpo(corpo = "{}".toByteArray(), dichiarata = "99999999999999999999"),
+            "una lunghezza assurda è una richiesta malformata"
+        )
+    }
+
+    @Test
+    fun `un corpo oltre il limite e' respinto sulla dichiarazione, senza leggerlo`() {
+        // Si manda **un byte solo** dichiarandone milioni: se il limite fosse controllato leggendo,
+        // questo test si bloccherebbe o passerebbe per il motivo sbagliato.
+        malformata(
+            grezzaConCorpo(corpo = ByteArray(1), dichiarata = "${Http.MAX_CORPO + 1}"),
+            "il limite si applica al valore dichiarato"
+        )
+        // E il valore esatto del limite passa: il confine è dove è scritto che sia.
+        assertIs<RichiestaLetta.Ok>(
+            leggiByte(grezzaConCorpo(corpo = ByteArray(Http.MAX_CORPO) { 'a'.code.toByte() }))
+        )
+    }
+
+    @Test
+    fun `transfer-encoding non si interpreta, si rifiuta`() {
+        for (valore in listOf("chunked", "identity", "gzip, chunked")) {
+            malformata(
+                grezzaConCorpo(
+                    corpo = "4\r\nciao\r\n0\r\n\r\n".toByteArray(),
+                    dichiarata = null,
+                    intestazioniInPiu = "Transfer-Encoding: $valore\r\n"
+                ),
+                "«$valore» dichiara la lunghezza dentro il flusso: non si sa gestire"
+            )
+        }
+    }
+
+    @Test
+    fun `due content-length in disaccordo sono malformati`() {
+        // La forma classica del request smuggling. Qui non c'è keep-alive, quindi non ci sarebbe
+        // una richiesta successiva da contaminare — ma la mappa degli header sceglierebbe in
+        // silenzio quale credere, ed è la scelta silenziosa a non dover esistere.
+        malformata(
+            grezzaConCorpo(
+                corpo = "0123456789".toByteArray(),
+                dichiarata = "10",
+                intestazioniInPiu = "Content-Length: 3\r\n"
+            ),
+            "due lunghezze sono una di troppo"
+        )
+    }
+
+    @Test
+    fun `due content-length identici sono malformati lo stesso`() {
+        // Non è pignoleria: distinguere «ripetuto uguale» da «ripetuto diverso» aggiungerebbe un
+        // ramo a un controllo che vale proprio perché non ne ha.
+        malformata(
+            grezzaConCorpo(
+                corpo = "0123456789".toByteArray(),
+                dichiarata = "10",
+                intestazioniInPiu = "Content-Length: 10\r\n"
+            ),
+            "un content-length ripetuto è comunque ambiguo"
+        )
+    }
+
+    @Test
+    fun `un GET puo' dichiarare un corpo vuoto ma non uno vero`() {
+        // Alcuni client mandano `Content-Length: 0` su GET: è innocuo e va accettato.
+        assertEquals("", assertIs<RichiestaLetta.Ok>(
+            leggiByte(grezzaConCorpo(metodo = "GET", dichiarata = "0"))
+        ).request.body)
+
+        // Un corpo vero su GET no: accettarlo e ignorarlo lascerebbe byte non letti sul socket.
+        malformata(
+            grezzaConCorpo(metodo = "GET", corpo = "{}".toByteArray()),
+            "un GET con un corpo vero non è una richiesta a cui si sappia rispondere"
+        )
+    }
+
+    @Test
+    fun `un POST con corpo vuoto e' lecito`() {
+        // Sarà il router a dire che quel JSON non si capisce: qui la richiesta è ben formata.
+        assertEquals("", assertIs<RichiestaLetta.Ok>(
+            leggiByte(grezzaConCorpo(dichiarata = "0"))
+        ).request.body)
+    }
+
+    @Test
+    fun `il corpo si decodifica UTF-8, accenti compresi`() {
+        val testo = """{"titolo":"Riunione col perché — è già lunedì 12:30 ☕"}"""
+        val r = assertIs<RichiestaLetta.Ok>(
+            leggiByte(grezzaConCorpo(corpo = testo.toByteArray(Charsets.UTF_8)))
+        ).request
+        assertEquals(testo, r.body, "la lunghezza si conta in byte, il testo si legge in caratteri")
+    }
+
+    @Test
+    fun `byte non validi UTF-8 nel corpo non fanno lanciare`() {
+        val r = assertIs<RichiestaLetta.Ok>(
+            leggiByte(grezzaConCorpo(corpo = byteArrayOf(0x7b, 0xC3.toByte(), 0x28, 0x7d)))
+        ).request
+        assertTrue(r.body.isNotEmpty(), "un corpo storto diventa testo storto, non un'eccezione")
+    }
+
+    @Test
+    fun `il corpo non altera la lettura di percorso e header`() {
+        val r = assertIs<RichiestaLetta.Ok>(
+            leggiByte(
+                grezzaConCorpo(
+                    metodo = "PUT",
+                    corpo = "{}".toByteArray(),
+                    intestazioniInPiu = "Content-Type: application/json\r\nIf-None-Match: \"abc\"\r\n"
+                )
+            )
+        ).request
+        assertEquals("PUT", r.method)
+        assertEquals("/api/eventi", r.path)
+        assertEquals("application/json", r.header("content-type"))
+        assertEquals("\"abc\"", r.header("If-None-Match"), "i nomi restano insensibili al caso")
+    }
+
+    @Test
+    fun `i codici di stato nuovi hanno la loro descrizione`() {
+        for ((codice, atteso) in listOf(
+            201 to "Created",
+            409 to "Conflict",
+            415 to "Unsupported Media Type",
+            422 to "Unprocessable Content",
+            503 to "Service Unavailable"
+        )) {
+            val uscita = ByteArrayOutputStream()
+            scriviRisposta(uscita, HttpResponse.vuota(codice))
+            assertTrue(
+                uscita.toString(Charsets.ISO_8859_1.name()).startsWith("HTTP/1.1 $codice $atteso"),
+                "il codice $codice non si presenta come «$atteso»"
+            )
+        }
     }
 }

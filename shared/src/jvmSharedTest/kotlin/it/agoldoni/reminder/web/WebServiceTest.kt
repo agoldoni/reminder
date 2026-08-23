@@ -2,6 +2,7 @@ package it.agoldoni.reminder.web
 
 import it.agoldoni.reminder.data.FakeEventDao
 import it.agoldoni.reminder.platform.AppSettings
+import it.agoldoni.reminder.sync.RecordingAlarmScheduler
 import java.io.File
 import java.io.IOException
 import java.net.InetAddress
@@ -68,6 +69,8 @@ class WebServiceTest {
         custode: ProcessKeeper = CustodeDiProva()
     ) = WebService(
         dao = FakeEventDao(),
+        alarms = RecordingAlarmScheduler(),
+        deviceId = "telefono-di-prova",
         settings = settings,
         scope = scope,
         // Porta a zero: la sceglie il sistema, così il test non dipende da una porta libera.
@@ -90,8 +93,8 @@ class WebServiceTest {
         web.resume()
         assertFalse(web.status.value.listening)
         assertNull(web.status.value.port)
-        assertNull(web.status.value.token)
-        assertNull(web.status.value.url)
+        assertNull(web.status.value.tokenLettura)
+        assertNull(web.status.value.urlLettura)
         assertTrue(custode.richieste.isEmpty())
     }
 
@@ -106,8 +109,8 @@ class WebServiceTest {
         assertTrue(stato.listening)
         assertNotNull(stato.port)
         assertEquals("192.168.1.42", stato.host)
-        assertNotNull(stato.token)
-        assertEquals("https://192.168.1.42:${stato.port}/?t=${stato.token}", stato.url)
+        assertNotNull(stato.tokenLettura)
+        assertEquals("https://192.168.1.42:${stato.port}/?t=${stato.tokenLettura}", stato.urlLettura)
         assertTrue(raggiungibile(stato.port!!))
         assertTrue(custode.vivo, "senza custode la porta morirebbe appena l'app va in background")
         web.disable()
@@ -120,11 +123,11 @@ class WebServiceTest {
         val web = servizio()
         web.enable()
         val porta = web.status.value.port!!
-        val token = web.status.value.token
+        val token = web.status.value.tokenLettura
         repeat(5) { web.resume() } // come se l'app andasse e venisse dal primo piano
         assertTrue(web.status.value.listening)
         assertEquals(porta, web.status.value.port, "la porta non si è mai chiusa")
-        assertEquals(token, web.status.value.token, "e il token non è cambiato")
+        assertEquals(token, web.status.value.tokenLettura, "e il token non è cambiato")
         assertTrue(raggiungibile(porta))
         web.disable()
     }
@@ -147,17 +150,17 @@ class WebServiceTest {
         val web = servizio(custode = custode)
         web.enable()
         val porta = web.status.value.port!!
-        val vecchio = web.status.value.token!!
+        val vecchio = web.status.value.tokenLettura!!
 
         web.disable()
         assertFalse(web.status.value.enabled)
         assertFalse(web.status.value.listening)
-        assertNull(web.status.value.token)
+        assertNull(web.status.value.tokenLettura)
         assertFalse(custode.vivo, "la notifica non deve sopravvivere alla porta")
         assertFalse(raggiungibile(porta), "a porta chiusa la connessione va rifiutata")
 
         web.enable()
-        assertNotEquals(vecchio, web.status.value.token, "un indirizzo copiato prima non deve valere")
+        assertNotEquals(vecchio, web.status.value.tokenLettura, "un indirizzo copiato prima non deve valere")
         web.disable()
     }
 
@@ -179,7 +182,7 @@ class WebServiceTest {
         assertTrue(web.status.value.enabled)
         web.resume()
         assertTrue(web.status.value.listening)
-        assertNotNull(web.status.value.token, "un token serve anche quando nessuno ha premuto nulla")
+        assertNotNull(web.status.value.tokenLettura, "un token serve anche quando nessuno ha premuto nulla")
         assertTrue(custode.vivo)
         web.disable()
     }
@@ -205,6 +208,8 @@ class WebServiceTest {
             val custode = CustodeDiProva()
             val web = WebService(
                 dao = FakeEventDao(),
+                alarms = RecordingAlarmScheduler(),
+                deviceId = "telefono-di-prova",
                 settings = SettingsDiProva(),
                 scope = scope,
                 port = occupante.localPort,
@@ -229,13 +234,21 @@ class WebServiceTest {
         WebServerNonDisponibile.enable()
         WebServerNonDisponibile.resume()
         assertFalse(WebServerNonDisponibile.status.value.enabled)
-        assertNull(WebServerNonDisponibile.status.value.url)
+        assertNull(WebServerNonDisponibile.status.value.urlLettura)
     }
 
     @Test
     fun `l'indirizzo non si mostra finche' non si ascolta davvero`() {
-        val stato = WebStatus(enabled = true, listening = false, host = "1.2.3.4", port = 9888, token = "abc")
-        assertNull(stato.url, "un indirizzo mostrato mentre non si ascolta manda contro un muro")
+        val stato = WebStatus(
+            enabled = true,
+            listening = false,
+            host = "1.2.3.4",
+            port = 9888,
+            tokenLettura = "abc",
+            tokenScrittura = "xyz"
+        )
+        assertNull(stato.urlLettura, "un indirizzo mostrato mentre non si ascolta manda contro un muro")
+        assertNull(stato.urlScrittura, "vale per tutti e due")
     }
 
     @Test
@@ -278,6 +291,8 @@ class WebServiceTest {
         val ostacolo = File(cartella, "ostacolo").apply { writeText("non sono una cartella") }
         val web = WebService(
             dao = FakeEventDao(),
+            alarms = RecordingAlarmScheduler(),
+            deviceId = "telefono-di-prova",
             settings = SettingsDiProva(),
             scope = scope,
             port = 0,
@@ -288,7 +303,7 @@ class WebServiceTest {
         web.enable()
 
         assertFalse(web.status.value.listening, "senza certificato non si apre nulla")
-        assertNull(web.status.value.url)
+        assertNull(web.status.value.urlLettura)
         val messaggio = web.status.value.lastMessage
         assertNotNull(messaggio)
         assertTrue(
@@ -331,7 +346,7 @@ class WebServiceTest {
         web.enable()
         val stato = web.status.value
         val porta = stato.port!!
-        val token = stato.token!!
+        val token = stato.tokenLettura!!
 
         try {
             val pagina = chiedi(porta, "/?t=$token")

@@ -33,6 +33,40 @@ interface EventDao {
     @Update
     suspend fun update(event: EventEntity)
 
+    /**
+     * Aggiornamento **condizionato**: scrive solo se la riga è ancora quella che il chiamante
+     * credeva di modificare. Restituisce il numero di righe toccate — `1` fatto, `0` conflitto.
+     *
+     * Serve alle scritture che arrivano dalla web app, dove fra la lettura e il salvataggio può
+     * passare mezzo minuto (il browser interroga ogni trenta secondi) e nel frattempo la stessa
+     * riga può essere cambiata dal telefono. Leggere, confrontare e scrivere in tre passi non
+     * basterebbe: ogni connessione è servita da una coroutine sua, quindi due richieste possono
+     * superare entrambe il confronto e sovrascriversi. Qui la domanda è una sola, e in SQLite un
+     * `UPDATE … WHERE` è atomico: il conteggio *è* l'esito del confronto.
+     *
+     * **Nella `SET` non ci sono `uuid` e `origin`**, e non è una dimenticanza: sono l'identità
+     * dell'evento fra dispositivi, e questa è la strada per cui un JSON che *sembra* già un evento
+     * potrebbe farli rigenerare. Non potendoli nominare, non si possono perdere.
+     */
+    @Query(
+        """
+        UPDATE events SET title = :title, description = :description,
+            dateTimeMillis = :dateTimeMillis, advanceMinutes = :advanceMinutes,
+            completed = :completed, updatedAt = :nowMillis
+        WHERE id = :id AND deleted = 0 AND updatedAt = :attesoUpdatedAt
+        """
+    )
+    suspend fun updateIfUnchanged(
+        id: Long,
+        title: String,
+        description: String?,
+        dateTimeMillis: Long,
+        advanceMinutes: Int,
+        completed: Boolean,
+        attesoUpdatedAt: Long,
+        nowMillis: Long
+    ): Int
+
     /** Cancellazione logica: la riga resta come tombstone finché non è stata propagata ai peer. */
     @Query("UPDATE events SET deleted = 1, deletedAt = :nowMillis, updatedAt = :nowMillis WHERE id = :id")
     suspend fun softDelete(id: Long, nowMillis: Long)

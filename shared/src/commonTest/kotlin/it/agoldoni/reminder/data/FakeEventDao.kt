@@ -34,6 +34,34 @@ class FakeEventDao(initial: List<EventEntity> = emptyList()) : EventDao {
         state.value = state.value.map { if (it.id == event.id) event else it }
     }
 
+    override suspend fun updateIfUnchanged(
+        id: Long,
+        title: String,
+        description: String?,
+        dateTimeMillis: Long,
+        advanceMinutes: Int,
+        completed: Boolean,
+        attesoUpdatedAt: Long,
+        nowMillis: Long
+    ): Int {
+        // Le stesse tre condizioni della `WHERE`, nello stesso ordine: la riga esiste, non è un
+        // tombstone, ed è ferma dove il chiamante l'aveva letta.
+        val riga = state.value.firstOrNull {
+            it.id == id && !it.deleted && it.updatedAt == attesoUpdatedAt
+        } ?: return 0
+        edit(id) {
+            riga.copy(
+                title = title,
+                description = description,
+                dateTimeMillis = dateTimeMillis,
+                advanceMinutes = advanceMinutes,
+                completed = completed,
+                updatedAt = nowMillis
+            )
+        }
+        return 1
+    }
+
     override suspend fun softDelete(id: Long, nowMillis: Long) {
         edit(id) { it.copy(deleted = true, deletedAt = nowMillis, updatedAt = nowMillis) }
     }

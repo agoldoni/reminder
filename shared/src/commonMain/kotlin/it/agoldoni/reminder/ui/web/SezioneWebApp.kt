@@ -66,7 +66,8 @@ fun SezioneWebApp(
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Consulta dal browser", style = MaterialTheme.typography.titleSmall)
                     Text(
-                        "Apre una pagina di sola lettura per chi è sulla stessa rete.",
+                        "Apre una pagina di sola lettura per chi è sulla stessa rete. " +
+                            "Da un secondo indirizzo si possono anche modificare.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -77,7 +78,7 @@ fun SezioneWebApp(
                 )
             }
 
-            val url = stato.url
+            val url = stato.urlLettura
             when {
                 !stato.enabled -> Text(
                     "Spenta: nessuno può raggiungere i promemoria da questo dispositivo.",
@@ -86,31 +87,13 @@ fun SezioneWebApp(
                 )
 
                 url != null -> {
-                    val copia = {
-                        appunti.setText(AnnotatedString(url))
+                    RigaIndirizzo(url) { copiato ->
+                        appunti.setText(AnnotatedString(copiato))
                         // Da Android 13 il sistema apre già la sua anteprima con il testo
                         // copiato: aggiungerci il nostro messaggio direbbe due volte la stessa
                         // cosa, una sopra l'altra.
-                        if (!sistemaConfermaLaCopia()) onMessaggio("Indirizzo copiato negli appunti.")
-                    }
-                    // Tutta la riga copia, non solo l'icona: su un telefono l'indirizzo è il
-                    // bersaglio grande e ovvio, e ridigitarlo a mano sull'altro dispositivo è
-                    // proprio la fatica che questa riga esiste per togliere.
-                    Row(
-                        modifier = Modifier.fillMaxWidth()
-                            .clickable(onClickLabel = "Copia l'indirizzo", onClick = copia)
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            url,
-                            style = MaterialTheme.typography.bodyMedium,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
-                        IconButton(onClick = copia) {
-                            Icon(CopyIcon, contentDescription = "Copia l'indirizzo")
+                        if (!sistemaConfermaLaCopia()) {
+                            onMessaggio("Indirizzo di sola lettura copiato negli appunti.")
                         }
                     }
                     // Il codice in fondo all'indirizzo è la sola cosa che tiene fuori gli altri:
@@ -121,6 +104,15 @@ fun SezioneWebApp(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+
+                    stato.urlScrittura?.let { completo ->
+                        IndirizzoCompleto(completo) { copiato ->
+                            appunti.setText(AnnotatedString(copiato))
+                            if (!sistemaConfermaLaCopia()) {
+                                onMessaggio("Indirizzo con le modifiche copiato negli appunti.")
+                            }
+                        }
+                    }
 
                     // **L'avviso va anticipato qui.** Comparirà di sicuro — il certificato è
                     // generato dal telefono e nessun browser lo conosce — e chi non se lo aspetta
@@ -153,12 +145,83 @@ fun SezioneWebApp(
             if (stato.enabled) {
                 Text(
                     "Resta aperta anche a app chiusa: una notifica fissa te lo ricorda, e da lì " +
-                        "puoi spegnerla.",
+                        "puoi spegnerla. Ad app chiusa si può però solo guardare: per modificare " +
+                        "dal browser, l'app dev'essere aperta qui.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
+    }
+}
+
+/**
+ * Una riga d'indirizzo: si copia toccandola.
+ *
+ * Tutta la riga copia, non solo l'icona: su un telefono l'indirizzo è il bersaglio grande e ovvio,
+ * e ridigitarlo a mano sull'altro dispositivo è proprio la fatica che questa riga esiste per
+ * togliere.
+ */
+@Composable
+private fun RigaIndirizzo(url: String, onCopia: (String) -> Unit) {
+    val copia = { onCopia(url) }
+    Row(
+        modifier = Modifier.fillMaxWidth()
+            .clickable(onClickLabel = "Copia l'indirizzo", onClick = copia)
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            url,
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        IconButton(onClick = copia) {
+            Icon(CopyIcon, contentDescription = "Copia l'indirizzo")
+        }
+    }
+}
+
+/**
+ * L'indirizzo che permette anche di modificare, dietro un tocco.
+ *
+ * **Perché non è affiancato all'altro.** I due indirizzi differiscono solo negli otto caratteri
+ * finali: uno sotto l'altro, con l'ellissi che ne taglia la coda, sono due stringhe
+ * indistinguibili a colpo d'occhio. E i due errori possibili non pesano uguale — copiare questo
+ * credendo di copiare quello di lettura regala il telecomando e **non dà nessun segnale**, mentre
+ * l'errore opposto si scopre in tre secondi perché la pagina non ha i comandi. Il gesto che
+ * sbaglia in silenzio è l'unico che richiede un tocco in più.
+ *
+ * **Perché non ordinati per frequenza d'uso**, che sarebbe stata la scelta ovvia: entrambi si
+ * copiano di rado, perché il codice cambia solo alla riaccensione e l'interruttore resta acceso.
+ *
+ * La forma è la stessa di [Impronta], che sta qui sotto per la stessa ragione: non fare rumore a
+ * chi non sta cercando quella cosa lì.
+ */
+@Composable
+private fun IndirizzoCompleto(url: String, onCopia: (String) -> Unit) {
+    var aperto by remember { mutableStateOf(false) }
+
+    Text(
+        if (aperto) "Nascondi l'indirizzo con le modifiche" else "Serve anche modificare dal browser?",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier
+            .clickable { aperto = !aperto }
+            .padding(vertical = 4.dp)
+    )
+
+    if (aperto) {
+        RigaIndirizzo(url, onCopia)
+        Text(
+            "Con questo indirizzo si creano, si modificano e si completano i promemoria. " +
+                "Tienilo per te: a chi deve solo guardare dài l'altro. " +
+                "Le modifiche funzionano solo mentre l'app è aperta su questo telefono.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 

@@ -1,6 +1,7 @@
 package it.agoldoni.reminder.web
 
 import it.agoldoni.reminder.data.EventDao
+import it.agoldoni.reminder.platform.AlarmScheduler
 import it.agoldoni.reminder.platform.AppSettings
 import it.agoldoni.reminder.platform.nowMillis
 import it.agoldoni.reminder.sync.siteAddress
@@ -23,6 +24,14 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 class WebService(
     dao: EventDao,
+    /**
+     * Le sveglie. Sta qui perché una scrittura che non le rimette in riga produce il guasto
+     * peggiore di tutta la feature: il dato è giusto nel database e la notifica arriva all'ora
+     * vecchia — sembra funzionare, e fallisce quando ormai non serve più.
+     */
+    alarms: AlarmScheduler,
+    /** Identità di questo dispositivo: marchia l'`origin` degli eventi creati dal browser. */
+    deviceId: String,
     private val settings: AppSettings,
     scope: CoroutineScope,
     /** Porta di ascolto; a zero la sceglie il sistema, cosa che serve solo ai test. */
@@ -41,7 +50,22 @@ class WebService(
 ) : WebServerController {
 
     private val token = AccessToken(now)
-    private val router = Router(dao, token)
+
+    /**
+     * Se l'app è davanti all'utente. **Non** è la stessa cosa dell'essere in ascolto: la porta
+     * sopravvive alla chiusura dell'app grazie al servizio in primo piano, l'attenzione
+     * dell'utente no. Ad app chiusa si continua a servire la pagina e i dati — cioè si torna a
+     * essere esattamente il servizio della feature 003 — e le scritture ricevono `503`.
+     */
+    @Volatile
+    private var appDavanti = false
+
+    private val router = Router(
+        scritture = ScrittureWeb(dao, alarms, deviceId, now),
+        token = token,
+        dao = dao,
+        appDavanti = { appDavanti }
+    )
     private val certificati = CertificateStore(cartellaCertificato, now = now)
 
     /**
@@ -86,16 +110,41 @@ class WebService(
         chiudi()
         // Spegnere non è mettere in pausa: il token va invalidato, non conservato.
         token.invalida()
-        _status.value = _status.value.copy(enabled = false, token = null, lastMessage = null)
+        _status.value = _status.value.copy(
+            enabled = false,
+            tokenLettura = null,
+            tokenScrittura = null,
+            lastMessage = null
+        )
     }
 
     override fun resume() {
+        // **Prima di tutto il resto, e anche a interruttore spento.** L'app è davanti: è un fatto,
+        // non una conseguenza dell'essere accesi, e va registrato anche se non c'è nessuna porta
+        // da riaprire.
+        segnalaAppDavanti(true)
         if (!settings.webEnabled.value) return
         // Già in ascolto: non c'è niente da riaprire, e richiamare il custode qui produrrebbe un
         // andirivieni con chi lo ha appena avviato.
         if (_status.value.listening) return
         apri()
         if (_status.value.listening) ingaggiaCustode()
+    }
+
+    override fun pause() = segnalaAppDavanti(false)
+
+    /**
+     * **Non chiude la porta**, abbassa solo una bandiera. Confondere le due cose richiuderebbe il
+     * socket a ogni rotazione dello schermo — che è un giro completo di `onStop`/`onStart` — e
+     * disferebbe la feature 002.
+     *
+     * La rotazione resta comunque una finestra in cui la scrittura risulta non disponibile, per
+     * una frazione di secondo. È il terzo posto in cui questo progetto incontra quel giro (prima
+     * il token, poi il certificato), e qui il danno massimo è un comando spento per un istante.
+     */
+    private fun segnalaAppDavanti(davanti: Boolean) {
+        appDavanti = davanti
+        _status.value = _status.value.copy(appDavanti = davanti)
     }
 
     /**
@@ -116,7 +165,7 @@ class WebService(
     private fun apri() {
         if (_status.value.listening) return
         // Al primo avvio del processo con l'interruttore già acceso non c'è ancora un token.
-        if (token.valore == null) token.rigenera()
+        if (token.coppia == null) token.rigenera()
 
         // Il certificato si prepara **prima** e a parte, per poterne riportare il guasto con il
         // suo nome: infilarlo nello stesso `runCatching` dell'apertura direbbe all'utente che la
@@ -126,7 +175,8 @@ class WebService(
                 listening = false,
                 port = null,
                 host = null,
-                token = null,
+                tokenLettura = null,
+                tokenScrittura = null,
                 impronta = null,
                 lastMessage = "Impossibile preparare il certificato del server: " +
                     "${errore.message ?: "errore sconosciuto"}."
@@ -142,7 +192,8 @@ class WebService(
                     // mostrare quella richiesta manderebbe chi digita contro un muro.
                     port = portaEffettiva,
                     host = indirizzoLocale(),
-                    token = token.valore,
+                    tokenLettura = token.coppia?.lettura,
+                    tokenScrittura = token.coppia?.scrittura,
                     impronta = identita.impronta,
                     lastMessage = null
                 )
@@ -152,7 +203,8 @@ class WebService(
                     listening = false,
                     port = null,
                     host = null,
-                    token = null,
+                    tokenLettura = null,
+                    tokenScrittura = null,
                     impronta = null,
                     lastMessage = "Impossibile aprire la porta $port: " +
                         "${errore.message ?: "porta occupata"}."

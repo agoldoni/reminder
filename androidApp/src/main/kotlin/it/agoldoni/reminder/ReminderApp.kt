@@ -65,6 +65,11 @@ class ReminderApp : Application() {
         // insieme, e non devono condividere né stato né sorte.
         webService = WebService(
             dao = database.eventDao(),
+            // Le stesse due dipendenze di `SyncEngine` qui sopra, e per la stessa ragione: chi
+            // scrive un evento deve rimettere in riga la sua sveglia, e chi ne crea uno deve
+            // sapere su quale dispositivo sta nascendo.
+            alarms = alarmScheduler,
+            deviceId = deviceId,
             settings = settings,
             scope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
             // Chiave e certificato del server stanno in `filesDir`, che Android crea già privata

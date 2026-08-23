@@ -3,15 +3,33 @@ package it.agoldoni.reminder.web
 import it.agoldoni.reminder.data.EventDao
 import it.agoldoni.reminder.data.EventEntity
 import java.security.MessageDigest
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * Versione del formato di scambio con il browser. Viaggia nella busta e serve a quando arriverà la
- * scrittura: un client vecchio contro un server nuovo deve poter fallire con un messaggio
- * esplicito invece di provare a capirsi. Stessa ragione di `PROTOCOL_VERSION` fra dispositivi.
+ * Versione del formato di scambio con il browser. Viaggia nella busta perché un client vecchio
+ * contro un server nuovo possa fallire con un messaggio esplicito invece di provare a capirsi.
+ * Stessa ragione di `PROTOCOL_VERSION` fra dispositivi.
+ *
+ * **2 dalla feature 004**, che è il caso per cui questo numero era stato messo qui: la busta porta
+ * i permessi e ogni evento porta il proprio `updatedAt`.
  */
-internal const val WEB_PAYLOAD_VERSION = 1
+internal const val WEB_PAYLOAD_VERSION = 2
+
+/**
+ * Che cosa permette **l'indirizzo** con cui si è entrati. Non cambia finché la porta resta accesa:
+ * è una proprietà del token, non del momento.
+ *
+ * Serve alla presentazione — dice al JavaScript se disegnare i comandi — e **non è un controllo
+ * d'accesso**: quello lo fa `Router` su ogni singola scrittura. Confondere le due cose vorrebbe
+ * dire proteggere una porta nascondendone la maniglia.
+ */
+@Serializable
+internal enum class PermessiWeb {
+    @SerialName("lettura") LETTURA,
+    @SerialName("scrittura") SCRITTURA
+}
 
 /**
  * Un promemoria come viaggia verso il browser. Deliberatamente **non** è [EventEntity].
@@ -20,6 +38,11 @@ internal const val WEB_PAYLOAD_VERSION = 1
  * sola lettura è un primo passo, e aggiungerlo dopo sarebbe una rottura del formato, mentre ora
  * costa un campo. [notificationMillis] è già calcolato qui perché la formula
  * `dateTimeMillis - advanceMinutes * 60000` non venga riscritta in JavaScript.
+ *
+ * [updatedAt] esce perché il controllo ottimistico non ha altro su cui poggiare: il browser deve
+ * poter dichiarare *che cosa credeva di modificare*, e fra la lettura e il salvataggio possono
+ * passare trenta secondi. Non è identità — è un numero di versione della riga — e non rivela nulla
+ * che il browser non veda già, visto che di quell'evento sta guardando titolo, data e descrizione.
  *
  * Cosa non c'è e perché: `uuid` e `origin` sono l'identità dell'evento fra dispositivi associati e
  * non hanno ragione di uscire verso un browser qualsiasi; `completed` e `deleted` sarebbero sempre
@@ -34,12 +57,24 @@ internal data class VoceWeb(
     val titolo: String,
     val descrizione: String? = null,
     val dateTimeMillis: Long,
-    val notificationMillis: Long
+    val notificationMillis: Long,
+    val updatedAt: Long
 )
 
 @Serializable
 internal data class WebPayload(
     val versione: Int = WEB_PAYLOAD_VERSION,
+    /** Che cosa permette l'indirizzo con cui si è entrati. */
+    val permessi: PermessiWeb,
+    /**
+     * Se in **questo momento** la scrittura è esercitabile, cioè se l'app è aperta sul telefono.
+     *
+     * Sta accanto a [permessi] e non al suo posto perché sono due cose diverse: uno dice quale
+     * potere ha l'indirizzo, l'altro se adesso lo si può usare. Fonderli darebbe una pagina che si
+     * traveste da quella di sola lettura appena il telefono va in tasca, e chi ha copiato
+     * l'indirizzo completo penserebbe di aver copiato quello sbagliato.
+     */
+    val scritturaDisponibile: Boolean,
     val eventi: List<VoceWeb>
 )
 
@@ -58,16 +93,35 @@ internal fun EventEntity.toVoceWeb() = VoceWeb(
     titolo = title,
     descrizione = description,
     dateTimeMillis = dateTimeMillis,
-    notificationMillis = dateTimeMillis - advanceMinutes * 60_000L
+    notificationMillis = dateTimeMillis - advanceMinutes * 60_000L,
+    updatedAt = updatedAt
 )
 
 /**
  * I promemoria aperti, nell'ordine in cui li mostra l'app: è la stessa query, `getAllOpen()`, che
  * già filtra i completati e i tombstone e ordina per data crescente. Ripetere qui i criteri di
  * quella query vorrebbe dire poterli far divergere.
+ *
+ * **È l'unico posto che costruisce la rappresentazione**, e ci passano sia la lettura sia le
+ * risposte alle scritture: così le due non possono divergere, perché non hanno due strade.
+ *
+ * Due conseguenze del fatto che [permessi] e [scritturaDisponibile] finiscono **dentro** il corpo,
+ * su cui si calcola l'impronta. La prima: due client con token diversi ricevono impronte diverse,
+ * il che è innocuo perché ciascun browser confronta l'impronta con la propria. La seconda è utile
+ * ed è voluta: quando l'app si apre sul telefono il corpo cambia, quindi l'impronta cambia, quindi
+ * la pagina ridisegna e i comandi si riaccendono — **senza una sola richiesta in più** rispetto al
+ * controllo periodico che già c'è.
  */
-internal suspend fun corpoEventi(dao: EventDao): CorpoJson {
-    val payload = WebPayload(eventi = dao.getAllOpen().map { it.toVoceWeb() })
+internal suspend fun corpoEventi(
+    dao: EventDao,
+    permessi: PermessiWeb,
+    scritturaDisponibile: Boolean
+): CorpoJson {
+    val payload = WebPayload(
+        permessi = permessi,
+        scritturaDisponibile = scritturaDisponibile,
+        eventi = dao.getAllOpen().map { it.toVoceWeb() }
+    )
     val bytes = json.encodeToString(payload).encodeToByteArray()
     return CorpoJson(bytes, impronta(bytes))
 }

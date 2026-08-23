@@ -33,10 +33,24 @@ private const val SOGLIA_TENTATIVI = 10
 private const val FINESTRA_MILLIS = 60_000L
 
 /**
- * Il token che apre la web app, con la sua difesa contro i tentativi ripetuti.
+ * I due segreti di una accensione. Non sono due livelli dello stesso token: sono **due token
+ * diversi**, e il potere sta in quale dei due si è digitato nell'indirizzo.
  *
- * Si rigenera a ogni accensione e si invalida a ogni spegnimento: un indirizzo copiato ieri non
- * funziona oggi, ed è questo a rendere accettabile che il token viaggi nell'URL.
+ * Perché due invece di un interruttore «consenti modifiche» nell'app: così [lettura] diventa una
+ * cosa che si può **dare a qualcun altro**. Con un interruttore solo bisognava scegliere fra
+ * «tutti guardano» e «tutti comandano».
+ */
+internal data class CoppiaToken(val lettura: String, val scrittura: String)
+
+/**
+ * I token che aprono la web app, con la loro difesa contro i tentativi ripetuti.
+ *
+ * Si rigenerano a ogni accensione e si invalidano a ogni spegnimento: un indirizzo copiato ieri
+ * non funziona oggi, ed è questo a rendere accettabile che il token viaggi nell'URL.
+ *
+ * **Il contatore dei tentativi resta uno solo** anche con due segreti. È per indirizzo IP, non per
+ * token: sdoppiarlo regalerebbe a chi sonda venti tentativi al minuto invece di dieci, che è
+ * esattamente la metà della coppia «token corto + soglia bassa» su cui poggia tutto.
  */
 internal class AccessToken(
     private val now: () -> Long = ::nowMillis,
@@ -44,16 +58,25 @@ internal class AccessToken(
 ) {
 
     @Volatile
-    private var corrente: String? = null
+    private var corrente: CoppiaToken? = null
 
     private val tentativi = ConcurrentHashMap<String, Tentativi>()
 
-    val valore: String? get() = corrente
+    val coppia: CoppiaToken? get() = corrente
 
-    /** Nuovo token, e tentativi azzerati: la sessione precedente non lascia strascichi. */
-    fun rigenera(): String {
+    /**
+     * Due token nuovi, e tentativi azzerati: la sessione precedente non lascia strascichi.
+     *
+     * I due sono diversi per costruzione. Con quaranta bit una collisione è teorica, ma se
+     * capitasse i due indirizzi sarebbero lo stesso indirizzo — e quello di sola lettura
+     * comanderebbe. Costa un confronto.
+     */
+    fun rigenera(): CoppiaToken {
         tentativi.clear()
-        return genera().also { corrente = it }
+        val lettura = genera()
+        var scrittura = genera()
+        while (scrittura == lettura) scrittura = genera()
+        return CoppiaToken(lettura, scrittura).also { corrente = it }
     }
 
     fun invalida() {
@@ -66,18 +89,24 @@ internal class AccessToken(
      * globale, perché un attaccante non deve poter chiudere fuori l'utente riempiendo il conto.
      */
     fun verifica(offerto: String?, provenienza: String): Accesso {
-        val atteso = corrente ?: return Accesso.NEGATO
+        val attesi = corrente ?: return Accesso.NEGATO
         if (bloccato(provenienza)) return Accesso.BLOCCATO
-        val coincide = offerto != null && constantTimeEquals(
-            offerto.encodeToByteArray(),
-            atteso.encodeToByteArray()
-        )
-        return if (coincide) {
-            tentativi.remove(provenienza)
-            Accesso.CONSENTITO
-        } else {
+        val bytes = offerto?.encodeToByteArray()
+        if (bytes == null) {
             registraFallimento(provenienza)
-            Accesso.NEGATO
+            return Accesso.NEGATO
+        }
+
+        // **Entrambi i confronti si eseguono sempre**, e i risultati si guardano dopo. Fermarsi al
+        // primo che coincide reintrodurrebbe una differenza di tempo fra «era il primo» e «era il
+        // secondo», che è precisamente ciò che `constantTimeEquals` esiste per togliere.
+        val eScrittura = constantTimeEquals(bytes, attesi.scrittura.encodeToByteArray())
+        val eLettura = constantTimeEquals(bytes, attesi.lettura.encodeToByteArray())
+
+        return when {
+            eScrittura -> { tentativi.remove(provenienza); Accesso.SCRITTURA }
+            eLettura -> { tentativi.remove(provenienza); Accesso.LETTURA }
+            else -> { registraFallimento(provenienza); Accesso.NEGATO }
         }
     }
 
@@ -109,7 +138,20 @@ internal class AccessToken(
  * distinti solo perché il secondo dice che il confronto non è nemmeno avvenuto, cosa che serve a
  * poterlo verificare in un test.
  */
-internal enum class Accesso { CONSENTITO, NEGATO, BLOCCATO }
+internal enum class Accesso {
+    LETTURA,
+    SCRITTURA,
+    NEGATO,
+    BLOCCATO;
+
+    /**
+     * Il token di scrittura vale **anche** per leggere: senza, la pagina servita sull'indirizzo
+     * completo non potrebbe caricare la propria lista, e servirebbero due schede aperte.
+     */
+    val puoLeggere: Boolean get() = this == LETTURA || this == SCRITTURA
+
+    val puoScrivere: Boolean get() = this == SCRITTURA
+}
 
 private fun tokenCasuale(): String {
     val bytes = randomBytes(LUNGHEZZA)
