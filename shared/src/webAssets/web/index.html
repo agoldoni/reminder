@@ -34,9 +34,11 @@
 
   <!--
     **Il modulo vive fuori da `#elenco`, e non è un dettaglio di impaginazione.**
-    `disegna()` azzera l'elenco e lo ricostruisce, e gira sia al controllo dei dati (ogni 30 s)
-    sia al ricalcolo dei colori (ogni 60 s). Un modulo dentro quell'albero verrebbe cancellato
-    sotto le dita entro un minuto, con dentro quello che si sta scrivendo. Starne fuori è la prima
+    Fino alla feature 005 la ragione era che `disegna()` azzerava l'elenco e lo ricostruiva, due
+    volte al minuto: un modulo dentro quell'albero veniva cancellato sotto le dita. Adesso il
+    ridisegno è mirato e non cancella più niente — ma la ragione resta, cambiata: dentro `#elenco`
+    il modulo starebbe appeso a **una scheda**, e quella scheda può sparire da un momento all'altro
+    se il promemoria viene completato dal telefono o da un altro browser. Starne fuori è la prima
     difesa; la seconda è che il ridisegno si sospende mentre il modulo è aperto.
   -->
   <dialog id="modulo">

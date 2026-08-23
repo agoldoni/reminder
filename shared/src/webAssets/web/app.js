@@ -3,31 +3,79 @@
 /*
   La pagina fa tre cose separate, e tenerle separate è il punto:
 
-  - chiede al telefono se qualcosa è cambiato, e **solo se è cambiato** ridisegna;
+  - **resta in attesa** che il telefono le dica che qualcosa è cambiato, e aggiorna la sola scheda
+    che è cambiata;
   - ricalcola da sola la fascia cromatica al passare dell'ora, senza chiedere niente;
   - manda le modifiche, quando l'indirizzo con cui è stata aperta lo permette.
+
+  La prima era, fino alla feature 005, «chiede ogni trenta secondi e se qualcosa è cambiato
+  ridisegna tutto». Erano due difetti che si tenevano per mano, e sono stati tolti insieme perché
+  toglierne uno solo avrebbe peggiorato la pagina: un elenco che si ricostruisce per intero due
+  volte al minuto è un difetto che si nota a fatica, ma lo stesso elenco che si ricostruisce per
+  intero **appena qualcuno tocca qualcosa** sarebbe un lampeggio addosso a chi sta leggendo.
 
   La seconda esiste perché un promemoria che scade alle 18:00 deve diventare "scaduto" alle 18:00
   anche se nessun dato è cambiato. È la controparte della scelta di formattare le date qui invece
   che sul telefono: gli orari seguono il fuso di questo browser, ma in cambio il colore resta
   giusto senza traffico.
 
-  La terza porta con sé il problema che governa metà di questo file: **il ridisegno cancella
-  l'elenco e lo ricostruisce**, quindi mentre un modulo è aperto non deve girare. Il modulo sta
-  fuori da `#elenco` (prima difesa, in index.html) e il ridisegno si sospende (seconda, qui sotto).
+  La terza porta con sé il problema che governa metà di questo file: **mentre un modulo è aperto il
+  ridisegno non deve girare.** La ragione non è più che l'elenco venga cancellato — non lo è — ma
+  che la riga in modifica è una scheda dell'elenco *sotto* il dialogo: aggiornare le altre può
+  spostarla, perché l'ordine dipende dalla data, e chi chiude il modulo si ritroverebbe il contesto
+  cambiato sotto. Il modulo sta fuori da `#elenco` (prima difesa, in index.html) e il ridisegno si
+  sospende (seconda, qui sotto).
 */
 
-var INTERVALLO_RETE = 30000;
+/*
+  Quanto aspetta il **server** prima di rispondere `304` a una richiesta in attesa. Qui serve solo
+  per sapere quando smettere di crederci: se le due costanti divergono, quella di qui dev'essere la
+  più grande — un client che si arrende prima che il telefono risponda butterebbe via la risposta
+  proprio mentre stava arrivando.
+*/
+var ATTESA_SERVER = 25000;
+var MARGINE_GUARDIA = 10000;
+
+/*
+  **Il pavimento fra due richieste, e non è una precauzione teorica.**
+
+  Il ciclo si riprogramma appena una risposta arriva: è ciò che rende immediato l'aggiornamento
+  quando il telefono aspetta davvero. Ma il telefono può rispondere *subito* per due ragioni
+  legittime — è una versione precedente che il parametro `attendi` non lo conosce, oppure ci sono
+  già troppe attese aperte e questa è stata respinta — e in entrambi i casi «riparti appena arriva»
+  diventa un ciclo stretto che martella la porta.
+
+  Con il pavimento, quei due casi degradano in un polling ogni cinque secondi, che è esattamente
+  ciò che si vuole: più lento del push, più vivo del ritmo di prima, e mai una raffica.
+*/
+var INTERVALLO_MINIMO = 5000;
+
+/* Il rientro dopo un guasto raddoppia fino a questo tetto: un telefono spento non va martellato. */
+var RITARDO_MINIMO = 1000;
+var RITARDO_MASSIMO = 30000;
+
 var INTERVALLO_COLORI = 60000;
 var GIORNO = 24 * 60 * 60 * 1000;
 var VERSIONE_ATTESA = 2;
+
+/* Quanto resta accesa l'evidenziazione di una scheda cambiata, prima di iniziare a svanire. */
+var DURATA_EVIDENZA = 2000;
 
 var token = new URLSearchParams(location.search).get('t') || '';
 var etag = null;
 var eventi = [];
 var primaRisposta = false;
 var inCorso = false;
-var timerRete = null;
+
+/* Il giro in corso, per poterlo interrompere; il prossimo, per poterlo disdire; la guardia. */
+var controllore = null;
+var timerGiro = null;
+var timerGuardia = null;
+var ritardo = RITARDO_MINIMO;
+
+/* La scheda è nascosta: nessun giro nuovo. [interrotta] distingue *chi* ha chiuso la richiesta. */
+var fermato = false;
+var interrotta = false;
 
 /* Che cosa permette l'indirizzo con cui questa pagina è stata aperta. */
 var puoScrivere = false;
@@ -38,6 +86,19 @@ var moduloAperto = false;
 var inModifica = null;
 /* L'ultima completazione, per poterla annullare: {id, dati, updatedAt}. */
 var daAnnullare = null;
+
+/*
+  I tre pezzi di stato che l'aggiornamento mirato porta con sé.
+
+  [schede] sono i nodi vivi, per `id`; [disegnati] è la lista **come è stata disegnata**, che non è
+  sempre `eventi` — a modulo aperto il ridisegno si ferma e `eventi` va avanti da solo, e la
+  differenza fra le due è esattamente ciò che si applica alla chiusura. [permessiDisegnati] ricorda
+  con quali permessi le schede sono state costruite: i comandi ci sono o non ci sono, quindi se
+  cambiano non basta aggiornarle, vanno rifatte.
+*/
+var schede = {};
+var disegnati = [];
+var permessiDisegnati = null;
 
 var elenco = document.getElementById('elenco');
 var vuoto = document.getElementById('vuoto');
@@ -109,54 +170,261 @@ function bottone(etichetta, principale, onClick) {
   return b;
 }
 
-function riga(evento) {
+/* --- Le schede ------------------------------------------------------------------------------ */
+
+/*
+  **I dati vivono sul nodo, non nella closure dei gestori**, ed è la differenza fra questa versione
+  e quella precedente. Prima i pulsanti catturavano `evento` in una closure, e funzionava perché una
+  scheda viveva meno di un aggiornamento: al giro dopo il nodo non c'era più, e con lui la closure.
+
+  Da quando le schede si riusano, la closure sopravvivrebbe ai dati: un tocco su «Fatto» manderebbe
+  l'`updatedAt` che quella scheda aveva **quando è stata creata**, e chi guarda vedrebbe «modificato
+  sul telefono nel frattempo» dopo aver toccato un pulsante su una scheda che mostra il valore
+  giusto. I gestori leggono `card._evento` al momento del click, che è sempre quello vero.
+*/
+function creaScheda(evento) {
   var card = document.createElement('article');
-  card.className = 'evento ' + fascia(evento);
+  card.className = 'evento';
 
   var titolo = document.createElement('div');
   titolo.className = 'titolo';
-  titolo.textContent = evento.titolo;
   card.appendChild(titolo);
 
-  if (evento.descrizione) {
-    var descrizione = document.createElement('div');
-    descrizione.className = 'descrizione';
-    descrizione.textContent = evento.descrizione;
-    card.appendChild(descrizione);
-  }
+  /*
+    La descrizione c'è **sempre**, anche quando è vuota, e allora si nasconde con `hidden`.
+    Crearla e distruggerla a seconda del contenuto vorrebbe dire che l'ordine dei figli di una
+    scheda dipende dai dati, e l'aggiornamento in loco dovrebbe cercarli invece di conoscerli.
+    Un nodo vuoto e nascosto costa niente; `[hidden]` in app.css garantisce che sparisca davvero.
+  */
+  var descrizione = document.createElement('div');
+  descrizione.className = 'descrizione';
+  card.appendChild(descrizione);
 
   var quando = document.createElement('div');
   quando.className = 'quando';
-  quando.textContent = formatta(evento.dateTimeMillis);
   card.appendChild(quando);
 
   var notifica = document.createElement('div');
   notifica.className = 'notifica';
-  notifica.textContent = 'Notifica: ' + formatta(evento.notificationMillis);
   card.appendChild(notifica);
+
+  card._parti = { titolo: titolo, descrizione: descrizione, quando: quando, notifica: notifica };
 
   if (puoScrivere) {
     var comandi = document.createElement('div');
     comandi.className = 'comandi';
-    comandi.appendChild(bottone('Fatto', false, function () { completa(evento); }));
-    comandi.appendChild(bottone('Modifica', true, function () { apriModulo(evento); }));
+    // `card` è il nodo, che non cambia; `card._evento` sono i dati, che cambiano. Leggerli qui
+    // dentro invece di catturarli è tutta la differenza.
+    comandi.appendChild(bottone('Fatto', false, function () { completa(card._evento); }));
+    comandi.appendChild(bottone('Modifica', true, function () { apriModulo(card._evento); }));
     card.appendChild(comandi);
   }
 
+  aggiornaScheda(card, evento);
   return card;
 }
 
-function disegna() {
+/* Scrive i dati in una scheda che esiste già. textContent, per la ragione di sempre. */
+function aggiornaScheda(card, evento) {
+  var p = card._parti;
+  p.titolo.textContent = evento.titolo;
+  p.descrizione.textContent = evento.descrizione || '';
+  p.descrizione.hidden = !evento.descrizione;
+  p.quando.textContent = formatta(evento.dateTimeMillis);
+  p.notifica.textContent = 'Notifica: ' + formatta(evento.notificationMillis);
+}
+
+/*
+  **La fascia si scrive con `classList`, mai con `className`.**
+
+  `card.className = 'evento ' + fascia` — come faceva la versione precedente — sovrascrive l'intera
+  lista di classi, evidenziazione compresa. Il difetto sarebbe intermittente per costruzione:
+  l'evidenziazione sparisce solo quando il ricalcolo dei colori capita a passare nei due secondi in
+  cui è accesa, cioè raramente, e mai mentre la si sta cercando. Vale in entrambe le direzioni —
+  nemmeno l'evidenziazione deve poter cancellare la fascia.
+*/
+function impostaFascia(card, nuova) {
+  if (card._fascia === nuova) return;
+  if (card._fascia) card.classList.remove(card._fascia);
+  card.classList.add(nuova);
+  card._fascia = nuova;
+}
+
+/*
+  L'evidenziazione della scheda appena cambiata: il rovescio dell'aggiornamento mirato.
+
+  Togliere il ridisegno totale toglie il fastidio del lampeggio e, nello stesso gesto, toglie anche
+  il **segnale**: una riga su quaranta che cambia senza che nulla lo dica si può semplicemente non
+  vedere. Compare di scatto e svanisce piano — l'apparizione deve prendere l'occhio, la sparizione
+  no. Le due velocità stanno in app.css e non qui, dove ci sono solo i millisecondi.
+*/
+function evidenzia(card) {
+  card.classList.add('cambiata');
+  if (card._timerEvidenza) clearTimeout(card._timerEvidenza);
+  card._timerEvidenza = setTimeout(function () {
+    card._timerEvidenza = null;
+    card.classList.remove('cambiata');
+  }, DURATA_EVIDENZA);
+}
+
+/* Una scheda che se ne va porta con sé il suo timer: altrimenti scatterebbe su un nodo staccato. */
+function scarta(card) {
+  if (card._timerEvidenza) {
+    clearTimeout(card._timerEvidenza);
+    card._timerEvidenza = null;
+  }
+}
+
+/* --- La riconciliazione ---------------------------------------------------------------------- */
+
+/*
+  Che cosa conta come «cambiata»: solo i campi **visibili**.
+
+  Non `updatedAt`, che è il numero di versione della riga e può muoversi senza che sullo schermo
+  cambi niente — una riscrittura identica arrivata dalla sincronizzazione, per esempio. Evidenziare
+  quella vorrebbe dire annunciare un cambiamento che non c'è.
+*/
+function differisce(a, b) {
+  return a.titolo !== b.titolo ||
+    (a.descrizione || '') !== (b.descrizione || '') ||
+    a.dateTimeMillis !== b.dateTimeMillis ||
+    a.notificationMillis !== b.notificationMillis;
+}
+
+/*
+  **Funzione pura**: due liste entrano, le operazioni che portano dalla prima alla seconda escono.
+  Non tocca il DOM, non legge variabili globali, non guarda l'ora.
+
+  Tenerla separata dall'applicazione non è ordine per il gusto dell'ordine. È l'unico pezzo di
+  questo file che si potrebbe provare da solo il giorno in cui il progetto avesse una ragione
+  indipendente per avere un banco di prova JavaScript; renderla impura chiuderebbe quella porta per
+  sempre. E serve già adesso a una seconda cosa: **quali schede evidenziare è scritto qui dentro**,
+  nel tipo dell'operazione, e non va ricavato una seconda volta da un secondo confronto — due
+  confronti prima o poi divergono.
+
+  Chiave: `id`. È nel payload dalla feature 002, messo lì per una ragione diversa, e il browser
+  parla con un solo dispositivo, quindi basta come identità.
+
+  I tre tipi, e uno di essi merita una nota: **una scheda che si sposta senza cambiare è
+  `invariata`.** Il riordino nasce dal fatto che *un'altra* ha cambiato data, e chi non è cambiato
+  non deve essere annunciato come se lo fosse. La posizione la sistema chi applica.
+*/
+function riconcilia(precedenti, nuovi) {
+  var prima = {};
+  var i;
+  for (i = 0; i < precedenti.length; i++) prima[precedenti[i].id] = precedenti[i];
+
+  var operazioni = [];
+  var visti = {};
+  for (i = 0; i < nuovi.length; i++) {
+    var evento = nuovi[i];
+    var vecchio = prima[evento.id];
+    visti[evento.id] = true;
+    operazioni.push({
+      tipo: !vecchio ? 'inserita' : (differisce(vecchio, evento) ? 'aggiornata' : 'invariata'),
+      evento: evento
+    });
+  }
+
+  var rimossi = [];
+  for (i = 0; i < precedenti.length; i++) {
+    if (!visti[precedenti[i].id]) rimossi.push(precedenti[i].id);
+  }
+
+  return { operazioni: operazioni, rimossi: rimossi };
+}
+
+/*
+  Le operazioni sul DOM. Si cammina l'ordine di arrivo e si mette ogni scheda al suo posto:
+  `insertBefore` su un nodo che è già nel documento lo **sposta**, non lo duplica, ed è ciò che
+  rende il riordino una riga sola invece di un caso a parte.
+*/
+function applicaOperazioni(esito, conEvidenza) {
+  var i;
+
+  for (i = 0; i < esito.rimossi.length; i++) {
+    var uscita = schede[esito.rimossi[i]];
+    if (!uscita) continue;
+    scarta(uscita);
+    if (uscita.parentNode) uscita.parentNode.removeChild(uscita);
+    delete schede[esito.rimossi[i]];
+  }
+
+  for (i = 0; i < esito.operazioni.length; i++) {
+    var op = esito.operazioni[i];
+    var card = schede[op.evento.id];
+
+    if (!card) {
+      card = creaScheda(op.evento);
+      schede[op.evento.id] = card;
+    } else if (op.tipo === 'aggiornata') {
+      aggiornaScheda(card, op.evento);
+    }
+
+    /*
+      **Sempre**, anche su `invariata`, ed è una riga che sembra ridondante e non lo è: i campi
+      visibili possono essere identici mentre `updatedAt` è andato avanti. Lasciando qui i dati
+      vecchi, il controllo ottimistico della prossima scrittura dichiarerebbe una versione che non
+      esiste più — cioè lo stesso difetto della closure, entrato da un'altra porta.
+    */
+    card._evento = op.evento;
+    impostaFascia(card, fascia(op.evento));
+
+    if (conEvidenza && op.tipo !== 'invariata') evidenzia(card);
+
+    var attuale = elenco.children[i];
+    if (attuale !== card) elenco.insertBefore(card, attuale || null);
+  }
+}
+
+/* Si riparte da zero: cambiati i permessi, le schede hanno una forma diversa (i comandi). */
+function azzeraElenco() {
+  for (var id in schede) scarta(schede[id]);
+  schede = {};
+  disegnati = [];
+  elenco.textContent = '';
+}
+
+/*
+  [conEvidenza] dice se le schede toccate devono farsi notare. È `false` in due casi, e sono
+  entrambi lo stesso caso travestito:
+
+  - **alla prima risposta**, dove ogni scheda è «appena inserita» e evidenziarle tutte vorrebbe dire
+    far lampeggiare l'intera pagina all'apertura — il difetto che l'aggiornamento mirato esiste per
+    togliere, rientrato dalla porta di servizio;
+  - **alla chiusura del modulo**, dove il ridisegno è rimasto fermo per minuti e riparte con tutte
+    le modifiche accumulate: annunciarle in blocco non è un segnale, è un lampo.
+*/
+function disegna(conEvidenza) {
   /* Il modulo è aperto: sotto c'è quello che l'utente sta scrivendo, e non si tocca. */
   if (moduloAperto) return;
 
-  // textContent invece di innerHTML: i titoli sono scritti dall'utente e non devono poter
-  // diventare marcatura. Con textContent non c'è niente da sfuggire, quindi niente da dimenticare.
-  elenco.textContent = '';
-  for (var i = 0; i < eventi.length; i++) elenco.appendChild(riga(eventi[i]));
-  vuoto.hidden = !(primaRisposta && eventi.length === 0);
+  if (permessiDisegnati !== puoScrivere) {
+    azzeraElenco();
+    permessiDisegnati = puoScrivere;
+  }
 
+  applicaOperazioni(riconcilia(disegnati, eventi), conEvidenza === true);
+  /* `eventi` viene **sostituito** a ogni risposta, mai modificato sul posto: tenerne il
+     riferimento è sicuro, e alla chiusura del modulo `disegnati` è ancora ciò che si vede. */
+  disegnati = eventi;
+
+  vuoto.hidden = !(primaRisposta && eventi.length === 0);
   bottoneNuovo.hidden = !puoScrivere;
+}
+
+/*
+  Il colore al passare dell'ora, **senza ricostruire niente**: cambia una classe e basta.
+
+  Prima questo era `disegna()` chiamato ogni sessanta secondi, cioè l'elenco intero rifatto per
+  cambiare quattro sfondi. Non ha bisogno della rete e non ha bisogno del DOM: è tutto calcolo
+  locale su dati che sono già qui.
+*/
+function aggiornaColori() {
+  for (var id in schede) {
+    var card = schede[id];
+    impostaFascia(card, fascia(card._evento));
+  }
 }
 
 function mostraAvviso(testo) {
@@ -183,22 +451,56 @@ function applica(dati) {
       'Ricarica per aggiornarla.');
     return;
   }
+  /* Prima che `primaRisposta` diventi vera: è questa la distinzione che quella variabile serve a
+     fare, e la ragione per cui l'apertura della pagina non evidenzia quaranta schede insieme. */
+  var evidenziabile = primaRisposta;
   eventi = dati.eventi || [];
   puoScrivere = dati.permessi === 'scrittura';
   primaRisposta = true;
-  disegna();
+  disegna(evidenziabile);
 }
 
-function controlla() {
-  if (inCorso) return; // su rete lenta le richieste non si devono accavallare
+/*
+  Un giro di rete: si chiede, si aspetta, si riparte.
+
+  **La differenza con la versione precedente è tutta nel parametro `attendi`**: la richiesta non
+  torna appena il telefono ha guardato, torna quando c'è qualcosa da dire — o dopo venticinque
+  secondi, se non è successo niente. Il ciclo non ha più un intervallo: si riprogramma da sé alla
+  fine di ogni giro, ed è questo a rendere immediato l'aggiornamento invece di lasciarlo cadere nel
+  prossimo scatto di un timer.
+
+  Il parametro si manda sempre. Un telefono che non lo conosce lo ignora e risponde subito: è la
+  compatibilità all'indietro, e non costa una riga di codice in più — costa il pavimento di
+  [INTERVALLO_MINIMO], che c'è comunque.
+*/
+function giro() {
+  if (inCorso || fermato) return;
   inCorso = true;
+  interrotta = false;
+  annullaProssimo();
+
+  var partenza = Date.now();
+  var cambiato = false;
 
   var intestazioni = {};
   if (etag) intestazioni['If-None-Match'] = etag;
 
-  fetch('/api/eventi?t=' + encodeURIComponent(token), {
+  controllore = new AbortController();
+  /*
+    La guardia. Una `fetch` che non si risolve mai — e succede: una connessione che muore senza
+    che nessuno lo dica, un telefono che si addormenta a metà frase — bloccherebbe il ciclo per
+    sempre, e la pagina resterebbe a mostrare dati vecchi **con l'aria di essere aggiornata**. È il
+    guasto peggiore possibile qui: non si vede.
+  */
+  timerGuardia = setTimeout(function () {
+    timerGuardia = null;
+    controllore.abort();
+  }, ATTESA_SERVER + MARGINE_GUARDIA);
+
+  fetch('/api/eventi?t=' + encodeURIComponent(token) + '&attendi=1', {
     cache: 'no-store',
-    headers: intestazioni
+    headers: intestazioni,
+    signal: controllore.signal
   }).then(function (risposta) {
     if (risposta.status === 304) {
       // Niente di nuovo: non si ridisegna, così la posizione di scorrimento resta dov'era.
@@ -217,17 +519,63 @@ function controlla() {
       return null;
     }
     etag = risposta.headers.get('ETag');
+    cambiato = true;
     return risposta.json();
   }).then(function (dati) {
-    if (!dati) return;
-    mostraAvviso('');
-    applica(dati);
+    if (dati) {
+      mostraAvviso('');
+      applica(dati);
+    }
+    chiudiGiro();
+    ritardo = RITARDO_MINIMO;
+    /*
+      Se qualcosa è cambiato si riparte subito: un `200` vuol dire che l'impronta si è mossa, e
+      l'impronta non si muove senza che qualcuno abbia scritto — quindi non può diventare una
+      raffica. Se invece non è cambiato niente, il pavimento: vedi [INTERVALLO_MINIMO].
+    */
+    programma(cambiato ? 0 : Math.max(0, INTERVALLO_MINIMO - (Date.now() - partenza)));
   }).catch(function () {
+    var voluta = interrotta;
+    interrotta = false;
+    chiudiGiro();
+
+    if (voluta) {
+      /* L'abbiamo chiusa noi perché la scheda è sparita. Se nel frattempo è tornata — la `catch`
+         può arrivare dopo — si riparte adesso, altrimenti si riparte quando torna. */
+      if (!fermato) programma(0);
+      return;
+    }
+
     mostraAvviso('Il telefono non risponde. Controlla che l\'app sia aperta e che la porta ' +
       'sia ancora accesa.');
-  }).then(function () {
-    inCorso = false;
+    programma(ritardo);
+    ritardo = Math.min(ritardo * 2, RITARDO_MASSIMO);
   });
+}
+
+function chiudiGiro() {
+  inCorso = false;
+  controllore = null;
+  if (timerGuardia !== null) {
+    clearTimeout(timerGuardia);
+    timerGuardia = null;
+  }
+}
+
+function programma(fra) {
+  annullaProssimo();
+  if (fermato) return;
+  timerGiro = setTimeout(function () {
+    timerGiro = null;
+    giro();
+  }, fra);
+}
+
+function annullaProssimo() {
+  if (timerGiro !== null) {
+    clearTimeout(timerGiro);
+    timerGiro = null;
+  }
 }
 
 /* --- Scritture ------------------------------------------------------------------------------ */
@@ -384,8 +732,9 @@ function chiudiModulo() {
   moduloAperto = false;
   inModifica = null;
   modulo.close();
-  /* Sospeso finché era aperto: adesso si recupera ciò che nel frattempo è cambiato. */
-  disegna();
+  /* Sospeso finché era aperto: adesso si recupera ciò che nel frattempo è cambiato — **senza
+     evidenziare**, perché sarebbero tutte insieme le modifiche di minuti, cioè un lampo. */
+  disegna(false);
 }
 
 function erroreModulo(testo) {
@@ -436,26 +785,33 @@ bottoneAnnulla.addEventListener('click', annullaCompletamento);
 
 /* --- Il ritmo ------------------------------------------------------------------------------- */
 
-function avviaControlli() {
-  if (timerRete === null) timerRete = setInterval(controlla, INTERVALLO_RETE);
-}
+/*
+  **Interrompere la richiesta in corso, non solo il timer.**
 
-function fermaControlli() {
-  if (timerRete !== null) { clearInterval(timerRete); timerRete = null; }
-}
-
+  Prima qui bastava fermare un `setInterval`, che è istantaneo. Adesso una richiesta è già partita e
+  il telefono la tiene appesa fino a venticinque secondi: senza `abort`, ogni scheda dimenticata in
+  fondo a una finestra si porterebbe via una coroutine e un socket per tutto quel tempo, e il tetto
+  delle attese verrebbe consumato da pagine che nessuno sta guardando.
+*/
 document.addEventListener('visibilitychange', function () {
   if (document.hidden) {
-    // Una scheda dimenticata non deve continuare a interrogare il telefono.
-    fermaControlli();
+    fermato = true;
+    annullaProssimo();
+    if (controllore) {
+      interrotta = true;
+      controllore.abort();
+    }
   } else {
-    controlla(); // subito, non fra trenta secondi: chi torna vuole vedere adesso
-    avviaControlli();
+    fermato = false;
+    ritardo = RITARDO_MINIMO;
+    /* Se un giro è ancora in corso — la `catch` dell'interruzione può non essere ancora arrivata —
+       sarà lei a far ripartire il ciclo: chiamare `giro()` qui non farebbe niente e lascerebbe la
+       pagina ferma per sempre. */
+    if (!inCorso) giro();
   }
 });
 
-// Il colore si aggiorna anche a rete ferma: è tutto calcolo locale.
-setInterval(disegna, INTERVALLO_COLORI);
+// Il colore si aggiorna anche a rete ferma: è tutto calcolo locale, e adesso non ridisegna niente.
+setInterval(aggiornaColori, INTERVALLO_COLORI);
 
-controlla();
-avviaControlli();
+giro();

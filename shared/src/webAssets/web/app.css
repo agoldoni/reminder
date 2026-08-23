@@ -218,6 +218,14 @@ main { padding: 16px; display: flex; flex-direction: column; gap: 8px; }
   border-radius: 12px;
   padding: 12px 16px;
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.18);
+  /*
+    Il contorno c'è sempre, trasparente: è la scheda a riposo. Vedi `.evento.cambiata` in fondo.
+    `outline` e non `box-shadow` perché l'elevazione qui sopra è già un `box-shadow` e sostituirla
+    vorrebbe dire ridichiararla; e `outline` non occupa spazio, quindi accendersi non sposta nulla.
+  */
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  transition: outline-color 600ms ease;
 }
 
 .evento.oggi   { background: var(--oggi-sfondo);   color: var(--oggi-testo); }
@@ -238,3 +246,29 @@ main { padding: 16px; display: flex; flex-direction: column; gap: 8px; }
 .evento.scaduto .quando { color: var(--errore); font-weight: 600; }
 
 .notifica { margin-top: 4px; font-size: 0.75rem; opacity: 0.75; }
+
+/*
+  **La scheda appena cambiata si fa notare, poi smette.**
+
+  È il rovescio dell'aggiornamento mirato: togliere il ridisegno totale toglie il lampeggio e, nello
+  stesso gesto, toglie il segnale — una riga su quaranta che cambia senza che nulla lo dica si può
+  semplicemente non vedere.
+
+  **Le due velocità sono diverse di proposito, e il modo di ottenerlo sta in queste due righe.**
+  Comparire deve prendere l'occhio, sparire non deve chiedere attenzione. Quando la classe viene
+  aggiunta vale il `transition: none` di qui sotto e il contorno appare di scatto; quando viene
+  tolta questa regola non si applica più, torna quella di `.evento`, e il colore svanisce in 600 ms.
+  Una sola proprietà, due comportamenti, nessun fotogramma da scrivere.
+
+  `currentColor` è il testo della fascia, quindi il contorno resta leggibile su tutte e quattro —
+  scuro sul giallo di «oggi», chiaro sul verde di «più avanti» — senza un colore per fascia.
+*/
+.evento.cambiata {
+  outline-color: currentColor;
+  transition: none;
+}
+
+/* Chi ha chiesto meno movimento riceve il segnale, non l'animazione: compare e sparisce. */
+@media (prefers-reduced-motion: reduce) {
+  .evento { transition: none; }
+}
